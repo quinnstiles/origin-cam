@@ -136,9 +136,16 @@ function startWatchdog() {
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
-        return res.status(405).json({
-            error: 'Method not allowed'
+        res.writeHead(405, {
+            'Content-Type': 'application/json'
         });
+
+        res.end(JSON.stringify({
+            error: 'Method not allowed'
+        }));
+
+        return;
+
     }
 
     try {
@@ -157,9 +164,15 @@ export default async function handler(req, res) {
                 ?.split(' ')[1];
 
         if (!token) {
-            return res.status(401).json({
-                error: 'No token'
+            res.writeHead(401, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                error: 'Invalid login'
+            }));
+
+            return;
         }
 
         const {
@@ -168,9 +181,15 @@ export default async function handler(req, res) {
         } = await supabase.auth.getUser(token);
 
         if (authError || !user) {
-            return res.status(401).json({
-                error: 'Invalid token'
+            res.writeHead(401, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                error: 'Invalid login'
+            }));
+
+            return;
         }
 
         // =========================
@@ -200,15 +219,29 @@ export default async function handler(req, res) {
             .single();
 
         if (profileError || !profile) {
-            return res.status(404).json({
-                error: 'Profile not found'
+            res.writeHead(404, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                error: 'Profile not found'
+            }));
+
+            return;
+
         }
 
         if (profile.remaining_seconds <= 0) {
-            return res.status(403).json({
-                error: 'No remaining time'
+            res.writeHead(403, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                error: 'No remaining time'
+            }));
+
+            return;
+
         }
 
         // =========================
@@ -238,9 +271,15 @@ export default async function handler(req, res) {
             .single();
 
         if (sessionError) {
-            return res.status(500).json({
-                error: sessionError.message
+            res.writeHead(500, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                error: err.message
+            }));
+
+            return;
         }
 
         // =========================
@@ -268,12 +307,18 @@ export default async function handler(req, res) {
         // RESPONSE
         // =========================
 
-        return res.status(200).json({
+        res.writeHead(200, {
+            'Content-Type': 'application/json'
+        });
+
+        res.end(JSON.stringify({
             success: true,
             session_id: session.id,
             remaining_seconds:
                 profile.remaining_seconds
-        });
+        }));
+
+        return;
     }
     catch (err) {
         console.error(
@@ -281,8 +326,14 @@ export default async function handler(req, res) {
             err
         );
 
-        return res.status(500).json({
-            error: err.message
+        res.writeHead(500, {
+            'Content-Type': 'application/json'
         });
+
+        res.end(JSON.stringify({
+            error: err.message
+        }));
+
+        return;
     }
 }

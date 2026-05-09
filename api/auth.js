@@ -20,9 +20,15 @@ const supabase = createClient(
 export default async function handler(req, res) {
 
     if (req.method !== 'POST') {
-        return res.status(405).json({
-            error: 'Method not allowed'
+        res.writeHead(405, {
+            'Content-Type': 'application/json'
         });
+
+        res.end(JSON.stringify({
+            error: 'Method not allowed'
+        }));
+
+        return;
     }
 
     try {
@@ -35,9 +41,15 @@ export default async function handler(req, res) {
         } = req.body;
 
         if (!type || !email || !password) {
-            return res.status(400).json({
-                error: 'Missing fields'
+            res.writeHead(400, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                error: 'Missing fields'
+            }));
+
+            return;
         }
 
         // ====================================
@@ -47,9 +59,15 @@ export default async function handler(req, res) {
         if (type === 'register') {
 
             if (!name) {
-                return res.status(400).json({
-                    error: 'Name required'
+                res.writeHead(400, {
+                    'Content-Type': 'application/json'
                 });
+
+                res.end(JSON.stringify({
+                    error: 'Missing fields'
+                }));
+
+                return;
             }
 
             const {
@@ -63,9 +81,15 @@ export default async function handler(req, res) {
                 });
 
             if (error) {
-                return res.status(400).json({
-                    error: error.message
+                res.writeHead(400, {
+                    'Content-Type': 'application/json'
                 });
+
+                res.end(JSON.stringify({
+                    error: 'Missing fields'
+                }));
+
+                return;
             }
 
             // create profile
@@ -78,9 +102,15 @@ export default async function handler(req, res) {
                     total_used_seconds: 0
                 });
 
-            return res.status(200).json({
-                success: true
+            res.writeHead(200, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                success: true
+            }));
+
+            return;
         }
 
         // ====================================
@@ -99,9 +129,15 @@ export default async function handler(req, res) {
                 });
 
             if (error || !data.session) {
-                return res.status(401).json({
-                    error: 'Invalid login'
+                res.writeHead(401, {
+                    'Content-Type': 'application/json'
                 });
+
+                res.end(JSON.stringify({
+                    error: 'Invalid login'
+                }));
+
+                return;
             }
 
             const user = data.user;
@@ -121,12 +157,24 @@ export default async function handler(req, res) {
                     .single();
 
             if (profileError || !profile) {
-                return res.status(404).json({
-                    error: 'Profile not found'
+                res.writeHead(404, {
+                    'Content-Type': 'application/json'
                 });
+
+                res.end(JSON.stringify({
+                    error: 'Profile not found'
+                }));
+
+                return;
+
             }
 
-            return res.status(200).json({
+            res.writeHead(200, {
+                'Content-Type': 'application/json'
+            });
+
+            res.end(JSON.stringify({
+
                 sessionToken:
                     data.session.access_token,
 
@@ -136,20 +184,34 @@ export default async function handler(req, res) {
                     seconds:
                         profile.remaining_seconds
                 }
-            });
+            }));
+
+            return;
         }
 
-        return res.status(400).json({
-            error: 'Invalid auth type'
+        res.writeHead(400, {
+            'Content-Type': 'application/json'
         });
+
+        res.end(JSON.stringify({
+            error: 'Missing fields'
+        }));
+
+        return;
 
     }
     catch (err) {
 
         console.error(err);
 
-        return res.status(500).json({
-            error: err.message
+        res.writeHead(500, {
+            'Content-Type': 'application/json'
         });
+
+        res.end(JSON.stringify({
+            error: err.message
+        }));
+
+        return;
     }
 }

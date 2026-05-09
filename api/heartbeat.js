@@ -1,8 +1,14 @@
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
-        return res.status(405).json({
-            error: 'Method not allowed'
+        res.writeHead(405, {
+            'Content-Type': 'application/json'
         });
+
+        res.end(JSON.stringify({
+            error: 'Method not allowed'
+        }));
+
+        return;
     }
 
     try {
@@ -14,21 +20,40 @@ export default async function handler(req, res) {
             ];
 
         if (!session) {
-            return res.status(404).json({
-                error: 'Session not found'
+
+            res.writeHead(404, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                error: 'Session not found'
+            }));
+
+            return;
         }
 
         session.lastHeartbeat =
             Date.now();
 
-        return res.status(200).json({
-            success: true
+        res.writeHead(200, {
+            'Content-Type': 'application/json'
         });
+
+        res.end(JSON.stringify({
+            success: true
+        }));
+
+        return;
     }
     catch (err) {
-        return res.status(500).json({
-            error: err.message
+        res.writeHead(500, {
+            'Content-Type': 'application/json'
         });
+
+        res.end(JSON.stringify({
+            error: err.message
+        }));
+
+        return;
     }
 }

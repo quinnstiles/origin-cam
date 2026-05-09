@@ -20,9 +20,15 @@ const supabase = createClient(
 export default async function handler(req, res) {
 
     if (req.method !== 'POST') {
-        return res.status(405).json({
-            error: 'Method not allowed'
+        res.writeHead(405, {
+            'Content-Type': 'application/json'
         });
+
+        res.end(JSON.stringify({
+            error: 'Method not allowed'
+        }));
+
+        return;
     }
 
     try {
@@ -30,9 +36,15 @@ export default async function handler(req, res) {
         const { token } = req.body;
 
         if (!token) {
-            return res.status(401).json({
-                success: false
+            res.writeHead(401, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                success: true
+            }));
+
+            return;
         }
 
         // ====================================
@@ -46,9 +58,15 @@ export default async function handler(req, res) {
             await supabase.auth.getUser(token);
 
         if (error || !user) {
-            return res.status(401).json({
-                success: false
+            res.writeHead(401, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                success: true
+            }));
+
+            return;
         }
 
         // ====================================
@@ -69,25 +87,44 @@ export default async function handler(req, res) {
                 .single();
 
         if (profileError || !profile) {
-            return res.status(404).json({
-                success: false
+
+            res.writeHead(404, {
+                'Content-Type': 'application/json'
             });
+
+            res.end(JSON.stringify({
+                success: false
+            }));
+
+            return;
         }
 
-        return res.status(200).json({
+        res.writeHead(200, {
+            'Content-Type': 'application/json'
+        });
+
+        res.end(JSON.stringify({
             success: true,
             user: profile.full_name,
             seconds:
                 profile.remaining_seconds
-        });
+        }));
+
+        return;
 
     }
     catch (err) {
 
         console.error(err);
 
-        return res.status(500).json({
-            success: false
+        res.writeHead(500, {
+            'Content-Type': 'application/json'
         });
+
+        res.end(JSON.stringify({
+            error: err.message
+        }));
+
+        return;
     }
 }
