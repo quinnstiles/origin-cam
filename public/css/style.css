@@ -1,0 +1,291 @@
+.nav-auth {
+    display: flex;
+    gap: 14px;
+}
+
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .55);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: .35s;
+    z-index: 99999;
+    padding: 20px;
+}
+
+.modal.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-box {
+    width: 100%;
+    max-width: 500px;
+    background: rgba(17, 8, 29, .85);
+    border: 1px solid rgba(255, 255, 255, .08);
+    backdrop-filter: blur(30px);
+    border-radius: 30px;
+    padding: 40px;
+    position: relative;
+    overflow: hidden;
+    animation: popup .4s ease;
+    box-shadow:
+        0 0 80px rgba(168, 85, 247, .18),
+        inset 0 0 20px rgba(255, 255, 255, .04);
+}
+
+@keyframes popup {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-box::before {
+    content: '';
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle,
+            rgba(168, 85, 247, .2),
+            transparent 70%);
+    top: -100px;
+    right: -100px;
+}
+
+.close-modal {
+    position: absolute;
+    top: 20px;
+    right: 22px;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 34px;
+    cursor: pointer;
+}
+
+.auth-panel {
+    display: none;
+}
+
+.auth-panel.active {
+    display: block;
+}
+
+.auth-panel h2,
+.info-box h2 {
+    font-family: 'Orbitron', sans-serif;
+    margin-bottom: 30px;
+    font-size: 34px;
+}
+
+.input-group {
+    margin-bottom: 22px;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 10px;
+    color: #d8b4fe;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 16px 18px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    background: rgba(255, 255, 255, .04);
+    color: #fff;
+    outline: none;
+    font-size: 16px;
+}
+
+.input-group input:focus {
+    border-color: #a855f7;
+    box-shadow: 0 0 20px rgba(168, 85, 247, .2);
+}
+
+.auth-submit {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.swap-auth {
+    margin-top: 24px;
+    text-align: center;
+    color: var(--muted);
+}
+
+.swap-auth a {
+    color: #d8b4fe;
+    text-decoration: none;
+}
+
+.terms {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 25px;
+    color: var(--muted);
+}
+
+.terms a {
+    color: #d8b4fe;
+    text-decoration: none;
+}
+
+.info-box p {
+    color: var(--muted);
+    line-height: 1.9;
+    margin-bottom: 18px;
+    font-size: 17px;
+}
+
+/* ADVANCED AI FACE SWAP */
+
+.screen {
+    position: relative;
+    height: 500px;
+    overflow: hidden;
+    background: #000;
+}
+
+.human-face,
+.robot-face {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.human-face {
+    z-index: 1;
+    filter: contrast(1.1);
+}
+
+.robot-face {
+    z-index: 2;
+    clip-path: inset(0 0 100% 0);
+    animation: robotReveal 5s linear infinite;
+    filter:
+        hue-rotate(-15deg) contrast(1.2) saturate(1.2);
+}
+
+@keyframes robotReveal {
+    0% {
+        clip-path: inset(0 0 100% 0);
+    }
+
+    45% {
+        clip-path: inset(0 0 50% 0);
+    }
+
+    100% {
+        clip-path: inset(0 0 0 0);
+    }
+}
+
+.face-grid {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+
+    background-image:
+        linear-gradient(rgba(255, 255, 255, .04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, .04) 1px, transparent 1px);
+
+    background-size: 30px 30px;
+}
+
+.scanner {
+    position: absolute;
+    width: 100%;
+    height: 5px;
+    background: #d8b4fe;
+    z-index: 10;
+    box-shadow: 0 0 25px #d8b4fe;
+    animation: scan 5s linear infinite;
+}
+
+.scanner-glow {
+    position: absolute;
+    width: 100%;
+    height: 120px;
+    z-index: 9;
+    background: linear-gradient(to bottom,
+            rgba(216, 180, 254, .0),
+            rgba(216, 180, 254, .22),
+            rgba(216, 180, 254, .0));
+    animation: scanGlow 5s linear infinite;
+}
+
+@keyframes scan {
+    from {
+        top: -10%;
+    }
+
+    to {
+        top: 110%;
+    }
+}
+
+@keyframes scanGlow {
+    from {
+        top: -20%;
+    }
+
+    to {
+        top: 100%;
+    }
+}
+
+.scan-data {
+    position: absolute;
+    z-index: 11;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    color: #d8b4fe;
+    text-shadow: 0 0 20px #d8b4fe;
+    letter-spacing: 2px;
+}
+
+.scan-left {
+    top: 20px;
+    left: 20px;
+}
+
+.scan-right {
+    bottom: 20px;
+    right: 20px;
+}
+
+@media(max-width:720px) {
+
+    .nav-auth {
+        gap: 10px;
+    }
+
+    .nav-auth .btn {
+        padding: 12px 18px;
+        font-size: 14px;
+    }
+
+    .modal-box {
+        padding: 30px 24px;
+    }
+
+    .auth-panel h2,
+    .info-box h2 {
+        font-size: 26px;
+    }
+}

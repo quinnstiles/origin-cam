@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Origin Cam | Profile</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #06010f;
+            --card: #12071f;
+            --primary: #a855f7;
+            --secondary: #7c3aed;
+            --light: #d8b4fe;
+            --text: #f5ecff;
+            --muted: #a78bbd;
+            --border: rgba(255, 255, 255, 0.08);
+            --green: #22c55e;
+            --red: #ef4444;
+            --glow: 0 0 40px rgba(168, 85, 247, .55);
+        }
+
+        body {
+            background:
+                radial-gradient(circle at top left, rgba(168, 85, 247, .22), transparent 35%),
+                radial-gradient(circle at bottom right, rgba(124, 58, 237, .2), transparent 35%),
+                #06010f;
+            color: var(--text);
+            font-family: 'Rajdhani', sans-serif;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, .03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, .03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: -2;
+        }
+
+        .noise {
+            position: fixed;
+            inset: 0;
+            background: url("https://www.transparenttextures.com/patterns/asfalt-dark.png");
+            opacity: .15;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 24px 7%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(20px);
+            background: rgba(8, 4, 18, .65);
+            border-bottom: 1px solid var(--border);
+            z-index: 1000;
+        }
+
+        .logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 28px;
+            font-weight: 900;
+            letter-spacing: 3px;
+            color: var(--light);
+            text-shadow: var(--glow);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 38px;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--muted);
+            font-size: 15px;
+            transition: .3s;
+            letter-spacing: 1px;
+        }
+
+        .nav-links a:hover {
+            color: var(--light);
+        }
+
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: var(--glow);
+            transition: .35s;
+            letter-spacing: 1px;
+        }
+
+        .btn:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 0 60px rgba(168, 85, 247, .8);
+        }
+
+        .container {
+            padding: 150px 7% 80px;
+        }
+
+        .profile-card {
+            background: rgba(18, 7, 31, .75);
+            border: 1px solid rgba(255, 255, 255, .08);
+            border-radius: 32px;
+            padding: 50px;
+            backdrop-filter: blur(30px);
+            box-shadow:
+                0 0 80px rgba(168, 85, 247, .15),
+                inset 0 0 20px rgba(255, 255, 255, .03);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .profile-card::before {
+            content: '';
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle,
+                    rgba(168, 85, 247, .18),
+                    transparent 70%);
+            top: -120px;
+            right: -120px;
+        }
+
+        .profile-header {
+            margin-bottom: 45px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 18px;
+            border-radius: 50px;
+            background: rgba(255, 255, 255, .04);
+            border: 1px solid rgba(168, 85, 247, .3);
+            margin-bottom: 22px;
+            color: var(--light);
+            backdrop-filter: blur(12px);
+        }
+
+        .profile-header h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 52px;
+            margin-bottom: 12px;
+        }
+
+        .profile-header p {
+            color: var(--muted);
+            font-size: 18px;
+        }
+
+        .profile-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 24px;
+            margin-bottom: 50px;
+        }
+
+        .info-box {
+            background: rgba(255, 255, 255, .03);
+            border: 1px solid rgba(255, 255, 255, .06);
+            border-radius: 24px;
+            padding: 28px;
+            transition: .3s;
+        }
+
+        .info-box:hover {
+            transform: translateY(-5px);
+            border-color: rgba(168, 85, 247, .3);
+            box-shadow: 0 0 30px rgba(168, 85, 247, .15);
+        }
+
+        .info-box span {
+            color: var(--muted);
+            display: block;
+            margin-bottom: 10px;
+            font-size: 14px;
+            letter-spacing: 1px;
+        }
+
+        .info-box h2 {
+            font-size: 28px;
+            color: var(--light);
+            word-break: break-word;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, .08);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 700px;
+            background: rgba(255, 255, 255, .02);
+        }
+
+        thead {
+            background: rgba(168, 85, 247, .12);
+        }
+
+        th {
+            padding: 22px;
+            text-align: left;
+            font-size: 15px;
+            color: var(--light);
+            letter-spacing: 1px;
+            font-family: 'Orbitron', sans-serif;
+            border-bottom: 1px solid rgba(255, 255, 255, .08);
+        }
+
+        td {
+            padding: 22px;
+            border-bottom: 1px solid rgba(255, 255, 255, .05);
+            color: var(--text);
+            font-size: 17px;
+        }
+
+        tbody tr {
+            transition: .3s;
+        }
+
+        tbody tr:hover {
+            background: rgba(168, 85, 247, .05);
+        }
+
+        .positive {
+            color: var(--green);
+            font-weight: 700;
+            text-shadow: 0 0 15px rgba(34, 197, 94, .4);
+        }
+
+        .negative {
+            color: var(--red);
+            font-weight: 700;
+            text-shadow: 0 0 15px rgba(239, 68, 68, .4);
+        }
+
+        footer {
+            padding: 40px 7%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            border-top: 1px solid rgba(255, 255, 255, .08);
+            margin-top: 80px;
+        }
+
+        footer p {
+            color: var(--muted);
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 24px;
+        }
+
+        .footer-links a {
+            text-decoration: none;
+            color: var(--muted);
+            transition: .3s;
+        }
+
+        .footer-links a:hover {
+            color: var(--light);
+        }
+
+        @media(max-width:768px) {
+
+            .nav-links {
+                display: none;
+            }
+
+            .profile-header h1 {
+                font-size: 36px;
+            }
+
+            .profile-card {
+                padding: 30px;
+            }
+
+            .info-box h2 {
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="noise"></div>
+
+    <nav>
+
+        <div class="logo">ORIGIN CAM</div>
+
+        <div class="nav-links">
+            <a href="#">Profile</a>
+            <a href="#">History</a>
+            <a href="#">Realtime Logs</a>
+            <a href="#">Security</a>
+        </div>
+
+        <button class="btn">Logout</button>
+
+    </nav>
+
+    <div class="container">
+
+        <div class="profile-card">
+
+            <div class="profile-header">
+
+                <div class="badge">
+                    ⚡ Neural Identity Profile
+                </div>
+
+                <h1>PROFILE SYSTEM</h1>
+
+                <p>
+                    Advanced realtime identity monitoring and neural activity history.
+                </p>
+
+            </div>
+
+            <div class="profile-grid">
+
+                <div class="info-box">
+                    <span>FULLNAME</span>
+                    <h2>John Doe</h2>
+                </div>
+
+                <div class="info-box">
+                    <span>EMAIL</span>
+                    <h2>john@example.com</h2>
+                </div>
+
+                <div class="info-box">
+                    <span>TIME</span>
+                    <h2>00:00</h2>
+                </div>
+
+            </div>
+
+            <div class="table-wrapper">
+
+                <table>
+
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>DATE</th>
+                            <th>TIME</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        <tr>
+                            <td>#001</td>
+                            <td>2026-05-08</td>
+                            <td class="negative">-10:44</td>
+                        </tr>
+
+                        <tr>
+                            <td>#002</td>
+                            <td>2026-05-08</td>
+                            <td class="positive">+30:00</td>
+                        </tr>
+
+                        <tr>
+                            <td>#003</td>
+                            <td>2026-05-07</td>
+                            <td class="negative">-04:18</td>
+                        </tr>
+
+                        <tr>
+                            <td>#004</td>
+                            <td>2026-05-07</td>
+                            <td class="positive">+18:55</td>
+                        </tr>
+
+                        <tr>
+                            <td>#005</td>
+                            <td>2026-05-06</td>
+                            <td class="positive">+50:12</td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <footer>
+
+        <p>© 2026 Origin Cam — Purple Neural Systems</p>
+
+        <div class="footer-links">
+            <a href="#">Privacy</a>
+            <a href="#">Technology</a>
+            <a href="#">Security</a>
+            <a href="#">Support</a>
+        </div>
+
+    </footer>
+
+</body>
+
+</html>

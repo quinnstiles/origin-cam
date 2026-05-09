@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Origin Cam | AI Realtime Character Swap</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #050816;
+            --card: #0c1228;
+            --primary: #00e5ff;
+            --secondary: #8b5cf6;
+            --text: #e8f7ff;
+            --muted: #7d92b3;
+            --line: rgba(255, 255, 255, 0.08);
+            --glow: 0 0 30px rgba(0, 229, 255, .45);
+        }
+
+        body {
+            background: radial-gradient(circle at top, #101a3d 0%, #050816 60%);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            z-index: -2;
+        }
+
+        .glow {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(0, 229, 255, .18), transparent 70%);
+            filter: blur(40px);
+            z-index: -1;
+        }
+
+        .glow.one {
+            top: -150px;
+            left: -150px;
+        }
+
+        .glow.two {
+            right: -200px;
+            top: 200px;
+            background: radial-gradient(circle, rgba(139, 92, 246, .22), transparent 70%);
+        }
+
+        nav {
+            width: 100%;
+            padding: 24px 8%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: fixed;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(18px);
+            background: rgba(5, 8, 22, .55);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 28px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            color: var(--primary);
+            text-shadow: 0 0 15px rgba(0, 229, 255, .7);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 40px;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--muted);
+            font-size: 14px;
+            transition: .3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            outline: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(0, 229, 255, .35);
+            transition: .35s;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 0 35px rgba(0, 229, 255, .55);
+        }
+
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 140px 8% 80px;
+            gap: 60px;
+            position: relative;
+        }
+
+        .hero-left {
+            flex: 1;
+        }
+
+        .hero-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 18px;
+            border: 1px solid rgba(0, 229, 255, .25);
+            background: rgba(255, 255, 255, .03);
+            border-radius: 50px;
+            color: var(--primary);
+            margin-bottom: 28px;
+            backdrop-filter: blur(10px);
+        }
+
+        .hero h1 {
+            font-size: 76px;
+            line-height: 1.05;
+            font-family: 'Orbitron', sans-serif;
+            margin-bottom: 28px;
+            text-transform: uppercase;
+        }
+
+        .gradient {
+            background: linear-gradient(90deg, var(--primary), #ffffff, var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            color: var(--muted);
+            font-size: 18px;
+            max-width: 680px;
+            line-height: 1.8;
+            margin-bottom: 40px;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+
+        .btn.secondary {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, .15);
+            color: #fff;
+            box-shadow: none;
+        }
+
+        .btn.secondary:hover {
+            border-color: var(--primary);
+            background: rgba(0, 229, 255, .08);
+        }
+
+        .hero-right {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .ai-panel {
+            width: 100%;
+            max-width: 540px;
+            background: rgba(12, 18, 40, .75);
+            border: 1px solid rgba(255, 255, 255, .08);
+            border-radius: 28px;
+            overflow: hidden;
+            backdrop-filter: blur(30px);
+            box-shadow:
+                0 0 40px rgba(0, 229, 255, .12),
+                inset 0 0 30px rgba(255, 255, 255, .03);
+            position: relative;
+        }
+
+        .ai-panel::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(130deg,
+                    transparent,
+                    rgba(255, 255, 255, .05),
+                    transparent);
+            transform: translateX(-100%);
+            animation: scan 6s linear infinite;
+        }
+
+        @keyframes scan {
+            100% {
+                transform: translateX(100%);
+            }
+        }
+
+        .panel-top {
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .dots {
+            display: flex;
+            gap: 8px;
+        }
+
+        .dots span {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #fff;
+            opacity: .3;
+        }
+
+        .status {
+            color: #00ffae;
+            font-size: 13px;
+            letter-spacing: 1px;
+        }
+
+        .video-area {
+            height: 420px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .video-area img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: .75;
+            filter: contrast(1.1) saturate(1.2);
+        }
+
+        .hud {
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(rgba(0, 229, 255, .08), transparent),
+                repeating-linear-gradient(transparent,
+                    transparent 2px,
+                    rgba(255, 255, 255, .03) 3px);
+            pointer-events: none;
+        }
+
+        .scan-line {
+            position: absolute;
+            width: 100%;
+            height: 4px;
+            background: rgba(0, 229, 255, .8);
+            box-shadow: 0 0 20px rgba(0, 229, 255, .8);
+            animation: move 4s linear infinite;
+        }
+
+        @keyframes move {
+            0% {
+                top: 0;
+            }
+
+            100% {
+                top: 100%;
+            }
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            padding: 24px;
+            border-top: 1px solid var(--line);
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, .03);
+            border: 1px solid rgba(255, 255, 255, .06);
+            padding: 18px;
+            border-radius: 18px;
+            text-align: center;
+        }
+
+        .stat h3 {
+            color: var(--primary);
+            font-size: 24px;
+            margin-bottom: 6px;
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .stat p {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        section {
+            padding: 110px 8%;
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: 70px;
+        }
+
+        .section-title h2 {
+            font-size: 48px;
+            font-family: 'Orbitron', sans-serif;
+            margin-bottom: 18px;
+        }
+
+        .section-title p {
+            color: var(--muted);
+            max-width: 700px;
+            margin: auto;
+            line-height: 1.7;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+        }
+
+        .feature-card {
+            background: rgba(12, 18, 40, .65);
+            border: 1px solid rgba(255, 255, 255, .08);
+            padding: 40px 32px;
+            border-radius: 24px;
+            position: relative;
+            overflow: hidden;
+            transition: .4s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            border-color: rgba(0, 229, 255, .3);
+            box-shadow: 0 0 30px rgba(0, 229, 255, .15);
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            width: 140px;
+            height: 140px;
+            background: radial-gradient(circle, rgba(0, 229, 255, .15), transparent 70%);
+            top: -60px;
+            right: -60px;
+        }
+
+        .icon {
+            width: 70px;
+            height: 70px;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 26px;
+            background: linear-gradient(135deg, rgba(0, 229, 255, .18), rgba(139, 92, 246, .2));
+            font-size: 28px;
+            color: var(--primary);
+            border: 1px solid rgba(255, 255, 255, .08);
+        }
+
+        .feature-card h3 {
+            font-size: 24px;
+            margin-bottom: 14px;
+        }
+
+        .feature-card p {
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .cta {
+            text-align: center;
+            background:
+                linear-gradient(rgba(0, 229, 255, .05), rgba(139, 92, 246, .08)),
+                rgba(12, 18, 40, .7);
+            border: 1px solid rgba(255, 255, 255, .08);
+            border-radius: 34px;
+            padding: 80px 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta h2 {
+            font-size: 56px;
+            margin-bottom: 22px;
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .cta p {
+            color: var(--muted);
+            max-width: 750px;
+            margin: 0 auto 40px;
+            line-height: 1.8;
+            font-size: 18px;
+        }
+
+        footer {
+            padding: 40px 8%;
+            border-top: 1px solid rgba(255, 255, 255, .08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        footer p {
+            color: var(--muted);
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 24px;
+        }
+
+        .footer-links a {
+            color: var(--muted);
+            text-decoration: none;
+            transition: .3s;
+        }
+
+        .footer-links a:hover {
+            color: var(--primary);
+        }
+
+        @media(max-width:1000px) {
+            .hero {
+                flex-direction: column;
+            }
+
+            .hero h1 {
+                font-size: 56px;
+            }
+
+            .section-title h2,
+            .cta h2 {
+                font-size: 40px;
+            }
+        }
+
+        @media(max-width:700px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero h1 {
+                font-size: 44px;
+            }
+
+            .hero p {
+                font-size: 16px;
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+
+            .section-title h2,
+            .cta h2 {
+                font-size: 32px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="glow one"></div>
+    <div class="glow two"></div>
+
+    <nav>
+        <div class="logo">ORIGIN CAM</div>
+
+        <div class="nav-links">
+            <a href="#">Technology</a>
+            <a href="#">Realtime AI</a>
+            <a href="#">Features</a>
+            <a href="#">API</a>
+        </div>
+
+        <button class="btn">Launch System</button>
+    </nav>
+
+    <section class="hero">
+        <div class="hero-left">
+            <div class="hero-tag">
+                ⚡ AI Realtime Character Swap Engine
+            </div>
+
+            <h1>
+                NEXT GEN <br>
+                <span class="gradient">AI FACE SWAP</span> <br>
+                SYSTEM
+            </h1>
+
+            <p>
+                Origin Cam delivers ultra realistic realtime AI character transformation powered by advanced neural
+                rendering technology inspired by futuristic cybernetic intelligence systems. Transform live video
+                streams into cinematic digital avatars instantly.
+            </p>
+
+            <div class="hero-buttons">
+                <button class="btn">Start AI Stream</button>
+                <button class="btn secondary">View Technology</button>
+            </div>
+        </div>
+
+        <div class="hero-right">
+            <div class="ai-panel">
+
+                <div class="panel-top">
+                    <div class="dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+
+                    <div class="status">
+                        ● AI LINK ACTIVE
+                    </div>
+                </div>
+
+                <div class="video-area">
+                    <img src="https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=1200&auto=format&fit=crop"
+                        alt="">
+
+                    <div class="hud"></div>
+                    <div class="scan-line"></div>
+                </div>
+
+                <div class="stats">
+                    <div class="stat">
+                        <h3>0.02s</h3>
+                        <p>Latency</p>
+                    </div>
+
+                    <div class="stat">
+                        <h3>8K</h3>
+                        <p>Realtime Render</p>
+                    </div>
+
+                    <div class="stat">
+                        <h3>99.9%</h3>
+                        <p>Face Accuracy</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="section-title">
+            <h2>CYBER AI FEATURES</h2>
+            <p>
+                Designed with futuristic neural systems and robotic intelligence architecture for the next evolution of
+                realtime video transformation.
+            </p>
+        </div>
+
+        <div class="features">
+
+            <div class="feature-card">
+                <div class="icon">◉</div>
+                <h3>Realtime Neural Rendering</h3>
+                <p>
+                    Ultra low latency AI rendering engine built for live streaming, virtual production, and futuristic
+                    digital identity transformation.
+                </p>
+            </div>
+
+            <div class="feature-card">
+                <div class="icon">⬢</div>
+                <h3>Advanced Face Mapping</h3>
+                <p>
+                    Intelligent AI tracks facial expressions, eye movement, and emotional response with cinematic
+                    precision in realtime.
+                </p>
+            </div>
+
+            <div class="feature-card">
+                <div class="icon">✦</div>
+                <h3>Cyber Security Layer</h3>
+                <p>
+                    Military-grade encrypted AI infrastructure designed for secure realtime streaming and digital
+                    identity protection.
+                </p>
+            </div>
+
+        </div>
+    </section>
+
+    <section>
+        <div class="cta">
+            <h2>ENTER THE AI FUTURE</h2>
+
+            <p>
+                Experience the next generation of cybernetic realtime character transformation technology with Origin
+                Cam neural systems.
+            </p>
+
+            <button class="btn">Initialize Origin Cam</button>
+        </div>
+    </section>
+
+    <footer>
+        <p>© 2026 Origin Cam — AI Cybernetic Streaming Systems</p>
+
+        <div class="footer-links">
+            <a href="#">Privacy</a>
+            <a href="#">Technology</a>
+            <a href="#">Security</a>
+            <a href="#">Docs</a>
+        </div>
+    </footer>
+
+    <script>
+        const buttons = document.querySelectorAll(".btn");
+
+        buttons.forEach(btn => {
+            btn.addEventListener("mousemove", e => {
+                const rect = btn.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                btn.style.background = `radial-gradient(circle at ${x}px ${y}px,
+          rgba(255,255,255,0.35),
+          rgba(0,229,255,0.8),
+          rgba(139,92,246,0.9))`;
+            });
+
+            btn.addEventListener("mouseleave", () => {
+                btn.style.background = "linear-gradient(135deg,#00e5ff,#8b5cf6)";
+            });
+        });
+
+        const stats = document.querySelectorAll(".stat h3");
+
+        stats.forEach(stat => {
+            stat.style.textShadow = "0 0 18px rgba(0,229,255,.7)";
+        });
+    </script>
+
+</body>
+
+</html>
