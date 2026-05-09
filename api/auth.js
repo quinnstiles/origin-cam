@@ -7,6 +7,10 @@ import {
     createClient
 } from '@supabase/supabase-js';
 
+// ========================================
+// SUPABASE
+// ========================================
+
 const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -17,16 +21,38 @@ const supabase = createClient(
     }
 );
 
+// ========================================
+// JSON RESPONSE HELPER
+// ========================================
+
+function sendJson(res, status, data) {
+
+    if (res.headersSent) {
+        return;
+    }
+
+    res.writeHead(status, {
+        'Content-Type': 'application/json'
+    });
+
+    res.end(JSON.stringify(data));
+}
+
+// ========================================
+// HANDLER
+// ========================================
+
 export default async function handler(req, res) {
 
-    if (req.method !== 'POST') {
-        res.writeHead(405, {
-            'Content-Type': 'application/json'
-        });
+    // ====================================
+    // METHOD CHECK
+    // ====================================
 
-        res.end(JSON.stringify({
+    if (req.method !== 'POST') {
+
+        sendJson(res, 405, {
             error: 'Method not allowed'
-        }));
+        });
 
         return;
     }
@@ -40,14 +66,15 @@ export default async function handler(req, res) {
             name
         } = req.body;
 
-        if (!type || !email || !password) {
-            res.writeHead(400, {
-                'Content-Type': 'application/json'
-            });
+        // ====================================
+        // VALIDATION
+        // ====================================
 
-            res.end(JSON.stringify({
+        if (!type || !email || !password) {
+
+            sendJson(res, 400, {
                 error: 'Missing fields'
-            }));
+            });
 
             return;
         }
@@ -59,13 +86,10 @@ export default async function handler(req, res) {
         if (type === 'register') {
 
             if (!name) {
-                res.writeHead(400, {
-                    'Content-Type': 'application/json'
-                });
 
-                res.end(JSON.stringify({
-                    error: 'Missing fields'
-                }));
+                sendJson(res, 400, {
+                    error: 'Name required'
+                });
 
                 return;
             }
@@ -81,34 +105,42 @@ export default async function handler(req, res) {
                 });
 
             if (error) {
-                res.writeHead(400, {
-                    'Content-Type': 'application/json'
-                });
 
-                res.end(JSON.stringify({
-                    error: 'Missing fields'
-                }));
+                sendJson(res, 400, {
+                    error: error.message
+                });
 
                 return;
             }
 
-            // create profile
-            await supabase
-                .from('profiles')
-                .insert({
-                    id: data.user.id,
-                    full_name: name,
-                    remaining_seconds: 0,
-                    total_used_seconds: 0
+            // ====================================
+            // CREATE PROFILE
+            // ====================================
+
+            const {
+                error: profileError
+            } =
+                await supabase
+                    .from('profiles')
+                    .insert({
+                        id: data.user.id,
+                        full_name: name,
+                        remaining_seconds: 0,
+                        total_used_seconds: 0
+                    });
+
+            if (profileError) {
+
+                sendJson(res, 500, {
+                    error: profileError.message
                 });
 
-            res.writeHead(200, {
-                'Content-Type': 'application/json'
-            });
+                return;
+            }
 
-            res.end(JSON.stringify({
+            sendJson(res, 200, {
                 success: true
-            }));
+            });
 
             return;
         }
@@ -129,18 +161,19 @@ export default async function handler(req, res) {
                 });
 
             if (error || !data.session) {
-                res.writeHead(401, {
-                    'Content-Type': 'application/json'
-                });
 
-                res.end(JSON.stringify({
+                sendJson(res, 401, {
                     error: 'Invalid login'
-                }));
+                });
 
                 return;
             }
 
             const user = data.user;
+
+            // ====================================
+            // GET PROFILE
+            // ====================================
 
             const {
                 data: profile,
@@ -149,31 +182,23 @@ export default async function handler(req, res) {
                 await supabase
                     .from('profiles')
                     .select(`
-                    id,
-                    full_name,
-                    remaining_seconds
-                `)
+                        id,
+                        full_name,
+                        remaining_seconds
+                    `)
                     .eq('id', user.id)
                     .single();
 
             if (profileError || !profile) {
-                res.writeHead(404, {
-                    'Content-Type': 'application/json'
+
+                sendJson(res, 404, {
+                    error: 'Profile not found'
                 });
 
-                res.end(JSON.stringify({
-                    error: 'Profile not found'
-                }));
-
                 return;
-
             }
 
-            res.writeHead(200, {
-                'Content-Type': 'application/json'
-            });
-
-            res.end(JSON.stringify({
+            sendJson(res, 200, {
 
                 sessionToken:
                     data.session.access_token,
@@ -184,33 +209,32 @@ export default async function handler(req, res) {
                     seconds:
                         profile.remaining_seconds
                 }
-            }));
+            });
 
             return;
         }
 
-        res.writeHead(400, {
-            'Content-Type': 'application/json'
-        });
+        // ====================================
+        // INVALID TYPE
+        // ====================================
 
-        res.end(JSON.stringify({
-            error: 'Missing fields'
-        }));
+        sendJson(res, 400, {
+            error: 'Invalid auth type'
+        });
 
         return;
 
     }
     catch (err) {
 
-        console.error(err);
+        console.error(
+            'AUTH ERROR:',
+            err
+        );
 
-        res.writeHead(500, {
-            'Content-Type': 'application/json'
-        });
-
-        res.end(JSON.stringify({
+        sendJson(res, 500, {
             error: err.message
-        }));
+        });
 
         return;
     }

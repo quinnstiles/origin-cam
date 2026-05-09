@@ -22,6 +22,23 @@ const supabase = createClient(
 );
 
 // ========================================
+// JSON RESPONSE HELPER
+// ========================================
+
+function sendJson(res, status, data) {
+
+    if (res.headersSent) {
+        return;
+    }
+
+    res.writeHead(status, {
+        'Content-Type': 'application/json'
+    });
+
+    res.end(JSON.stringify(data));
+}
+
+// ========================================
 // END SESSION
 // ========================================
 
@@ -33,13 +50,9 @@ export default async function handler(req, res) {
 
     if (req.method !== 'POST') {
 
-        res.writeHead(405, {
-            'Content-Type': 'application/json'
-        });
-
-        res.end(JSON.stringify({
+        sendJson(res, 405, {
             error: 'Method not allowed'
-        }));
+        });
 
         return;
     }
@@ -56,13 +69,9 @@ export default async function handler(req, res) {
 
         if (!token) {
 
-            res.writeHead(401, {
-                'Content-Type': 'application/json'
-            });
-
-            res.end(JSON.stringify({
+            sendJson(res, 401, {
                 error: 'No token'
-            }));
+            });
 
             return;
         }
@@ -75,13 +84,9 @@ export default async function handler(req, res) {
 
         if (authError || !user) {
 
-            res.writeHead(401, {
-                'Content-Type': 'application/json'
-            });
-
-            res.end(JSON.stringify({
+            sendJson(res, 401, {
                 error: 'Invalid token'
-            }));
+            });
 
             return;
         }
@@ -105,13 +110,9 @@ export default async function handler(req, res) {
 
         if (sessionError || !session) {
 
-            res.writeHead(404, {
-                'Content-Type': 'application/json'
-            });
-
-            res.end(JSON.stringify({
+            sendJson(res, 404, {
                 error: 'No active session'
-            }));
+            });
 
             return;
         }
@@ -132,17 +133,24 @@ export default async function handler(req, res) {
                 (now - startTime) / 1000
             );
 
-        // safety
+        // ====================================
+        // SAFETY
+        // ====================================
+
         if (usedSeconds < 0) {
             usedSeconds = 0;
         }
 
-        // cap protection
+        // ====================================
+        // MAX DURATION CAP
+        // ====================================
+
         if (
             session.max_duration_seconds &&
             usedSeconds >
             session.max_duration_seconds
         ) {
+
             usedSeconds =
                 session.max_duration_seconds;
         }
@@ -166,19 +174,15 @@ export default async function handler(req, res) {
 
         if (profileError || !profile) {
 
-            res.writeHead(404, {
-                'Content-Type': 'application/json'
-            });
-
-            res.end(JSON.stringify({
+            sendJson(res, 404, {
                 error: 'Profile not found'
-            }));
+            });
 
             return;
         }
 
         // ====================================
-        // CALCULATE NEW BALANCE
+        // CALCULATE BALANCE
         // ====================================
 
         let newRemaining =
@@ -196,41 +200,69 @@ export default async function handler(req, res) {
         // UPDATE SESSION
         // ====================================
 
-        await supabase
-            .from('sessions')
-            .update({
-                status: 'ended',
+        const {
+            error: updateSessionError
+        } =
+            await supabase
+                .from('sessions')
+                .update({
 
-                end_time:
-                    new Date(now)
-                        .toISOString(),
+                    status: 'ended',
 
-                used_seconds:
-                    usedSeconds,
+                    end_time:
+                        new Date(now)
+                            .toISOString(),
 
-                heartbeat_at:
-                    new Date(now)
-                        .toISOString()
-            })
-            .eq('id', session.id);
+                    used_seconds:
+                        usedSeconds,
+
+                    heartbeat_at:
+                        new Date(now)
+                            .toISOString()
+
+                })
+                .eq('id', session.id);
+
+        if (updateSessionError) {
+
+            sendJson(res, 500, {
+                error:
+                    updateSessionError.message
+            });
+
+            return;
+        }
 
         // ====================================
         // UPDATE PROFILE
         // ====================================
 
-        await supabase
-            .from('profiles')
-            .update({
+        const {
+            error: updateProfileError
+        } =
+            await supabase
+                .from('profiles')
+                .update({
 
-                remaining_seconds:
-                    newRemaining,
+                    remaining_seconds:
+                        newRemaining,
 
-                total_used_seconds:
-                    (profile.total_used_seconds || 0)
-                    + usedSeconds
+                    total_used_seconds:
+                        (profile.total_used_seconds || 0)
+                        + usedSeconds
 
-            })
-            .eq('id', userId);
+                })
+                .eq('id', userId);
+
+        if (updateProfileError) {
+
+            sendJson(res, 500, {
+                error:
+                    updateProfileError.message
+            });
+
+            return;
+        }
 
         // ====================================
         // REMOVE MEMORY SESSION
@@ -242,6 +274,7 @@ export default async function handler(req, res) {
             session.id
             ]
         ) {
+
             delete global.activeSessions[
                 session.id
             ];
@@ -251,11 +284,7 @@ export default async function handler(req, res) {
         // RESPONSE
         // ====================================
 
-        res.writeHead(200, {
-            'Content-Type': 'application/json'
-        });
-
-        res.end(JSON.stringify({
+        sendJson(res, 200, {
 
             success: true,
 
@@ -267,7 +296,7 @@ export default async function handler(req, res) {
 
             expired
 
-        }));
+        });
 
         return;
 
@@ -279,13 +308,9 @@ export default async function handler(req, res) {
             err
         );
 
-        res.writeHead(500, {
-            'Content-Type': 'application/json'
-        });
-
-        res.end(JSON.stringify({
+        sendJson(res, 500, {
             error: err.message
-        }));
+        });
 
         return;
     }

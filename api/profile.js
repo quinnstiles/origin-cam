@@ -7,6 +7,10 @@ import {
     createClient
 } from '@supabase/supabase-js';
 
+// ========================================
+// SUPABASE
+// ========================================
+
 const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -17,16 +21,38 @@ const supabase = createClient(
     }
 );
 
+// ========================================
+// JSON RESPONSE HELPER
+// ========================================
+
+function sendJson(res, status, data) {
+
+    if (res.headersSent) {
+        return;
+    }
+
+    res.writeHead(status, {
+        'Content-Type': 'application/json'
+    });
+
+    res.end(JSON.stringify(data));
+}
+
+// ========================================
+// PROFILE
+// ========================================
+
 export default async function handler(req, res) {
 
-    if (req.method !== 'POST') {
-        res.writeHead(405, {
-            'Content-Type': 'application/json'
-        });
+    // ====================================
+    // METHOD CHECK
+    // ====================================
 
-        res.end(JSON.stringify({
+    if (req.method !== 'POST') {
+
+        sendJson(res, 405, {
             error: 'Method not allowed'
-        }));
+        });
 
         return;
     }
@@ -35,14 +61,16 @@ export default async function handler(req, res) {
 
         const { token } = req.body;
 
-        if (!token) {
-            res.writeHead(401, {
-                'Content-Type': 'application/json'
-            });
+        // ====================================
+        // VALIDATE TOKEN INPUT
+        // ====================================
 
-            res.end(JSON.stringify({
-                success: true
-            }));
+        if (!token) {
+
+            sendJson(res, 401, {
+                success: false,
+                error: 'No token'
+            });
 
             return;
         }
@@ -58,13 +86,11 @@ export default async function handler(req, res) {
             await supabase.auth.getUser(token);
 
         if (error || !user) {
-            res.writeHead(401, {
-                'Content-Type': 'application/json'
-            });
 
-            res.end(JSON.stringify({
-                success: true
-            }));
+            sendJson(res, 401, {
+                success: false,
+                error: 'Invalid token'
+            });
 
             return;
         }
@@ -80,50 +106,51 @@ export default async function handler(req, res) {
             await supabase
                 .from('profiles')
                 .select(`
-                full_name,
-                remaining_seconds
-            `)
+                    full_name,
+                    remaining_seconds
+                `)
                 .eq('id', user.id)
                 .single();
 
         if (profileError || !profile) {
 
-            res.writeHead(404, {
-                'Content-Type': 'application/json'
+            sendJson(res, 404, {
+                success: false,
+                error: 'Profile not found'
             });
-
-            res.end(JSON.stringify({
-                success: false
-            }));
 
             return;
         }
 
-        res.writeHead(200, {
-            'Content-Type': 'application/json'
-        });
+        // ====================================
+        // RESPONSE
+        // ====================================
 
-        res.end(JSON.stringify({
+        sendJson(res, 200, {
+
             success: true,
-            user: profile.full_name,
+
+            user:
+                profile.full_name || '',
+
             seconds:
-                profile.remaining_seconds
-        }));
+                profile.remaining_seconds || 0
+        });
 
         return;
 
     }
     catch (err) {
 
-        console.error(err);
+        console.error(
+            'PROFILE ERROR:',
+            err
+        );
 
-        res.writeHead(500, {
-            'Content-Type': 'application/json'
-        });
-
-        res.end(JSON.stringify({
+        sendJson(res, 500, {
+            success: false,
             error: err.message
-        }));
+        });
 
         return;
     }

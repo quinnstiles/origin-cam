@@ -1,18 +1,59 @@
-export default async function handler(req, res) {
-    if (req.method !== 'POST') {
-        res.writeHead(405, {
-            'Content-Type': 'application/json'
-        });
+// ========================================
+// JSON RESPONSE HELPER
+// ========================================
 
-        res.end(JSON.stringify({
+function sendJson(res, status, data) {
+
+    if (res.headersSent) {
+        return;
+    }
+
+    res.writeHead(status, {
+        'Content-Type': 'application/json'
+    });
+
+    res.end(JSON.stringify(data));
+}
+
+// ========================================
+// HEARTBEAT
+// ========================================
+
+export default async function handler(req, res) {
+
+    // ====================================
+    // METHOD CHECK
+    // ====================================
+
+    if (req.method !== 'POST') {
+
+        sendJson(res, 405, {
             error: 'Method not allowed'
-        }));
+        });
 
         return;
     }
 
     try {
+
         const { session_id } = req.body;
+
+        // ====================================
+        // VALIDATE
+        // ====================================
+
+        if (!session_id) {
+
+            sendJson(res, 400, {
+                error: 'Missing session_id'
+            });
+
+            return;
+        }
+
+        // ====================================
+        // GET SESSION
+        // ====================================
 
         const session =
             global.activeSessions?.[
@@ -21,38 +62,41 @@ export default async function handler(req, res) {
 
         if (!session) {
 
-            res.writeHead(404, {
-                'Content-Type': 'application/json'
-            });
-
-            res.end(JSON.stringify({
+            sendJson(res, 404, {
                 error: 'Session not found'
-            }));
+            });
 
             return;
         }
 
+        // ====================================
+        // UPDATE HEARTBEAT
+        // ====================================
+
         session.lastHeartbeat =
             Date.now();
 
-        res.writeHead(200, {
-            'Content-Type': 'application/json'
-        });
+        // ====================================
+        // RESPONSE
+        // ====================================
 
-        res.end(JSON.stringify({
+        sendJson(res, 200, {
             success: true
-        }));
+        });
 
         return;
+
     }
     catch (err) {
-        res.writeHead(500, {
-            'Content-Type': 'application/json'
-        });
 
-        res.end(JSON.stringify({
+        console.error(
+            'HEARTBEAT ERROR:',
+            err
+        );
+
+        sendJson(res, 500, {
             error: err.message
-        }));
+        });
 
         return;
     }

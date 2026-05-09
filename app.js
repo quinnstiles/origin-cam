@@ -40,15 +40,33 @@ const publicDir =
 // ========================================
 
 const mimeTypes = {
-    '.html': 'text/html',
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.svg': 'image/svg+xml',
-    '.ico': 'image/x-icon'
+
+    '.html':
+        'text/html',
+
+    '.css':
+        'text/css',
+
+    '.js':
+        'application/javascript',
+
+    '.json':
+        'application/json',
+
+    '.png':
+        'image/png',
+
+    '.jpg':
+        'image/jpeg',
+
+    '.jpeg':
+        'image/jpeg',
+
+    '.svg':
+        'image/svg+xml',
+
+    '.ico':
+        'image/x-icon'
 };
 
 // ========================================
@@ -56,14 +74,22 @@ const mimeTypes = {
 // ========================================
 
 function sendJson(res, status, data) {
+
+    if (res.headersSent) {
+        return;
+    }
+
     res.writeHead(status, {
         'Content-Type': 'application/json'
     });
 
-    res.end(JSON.stringify(data));
+    res.end(
+        JSON.stringify(data)
+    );
 }
 
 function applyCors(res) {
+
     res.setHeader(
         'Access-Control-Allow-Origin',
         '*'
@@ -81,35 +107,59 @@ function applyCors(res) {
 }
 
 function parseBody(req) {
-    return new Promise((resolve, reject) => {
-        let body = '';
 
-        req.on('data', chunk => {
-            body += chunk.toString();
+    return new Promise(
+        (resolve, reject) => {
 
-            // safety limit
-            if (body.length > 10e6) {
-                reject(
-                    new Error('Body too large')
-                );
-            }
-        });
+            let body = '';
 
-        req.on('end', () => {
-            try {
-                resolve(
-                    body
-                        ? JSON.parse(body)
-                        : {}
-                );
-            }
-            catch {
-                resolve({});
-            }
-        });
+            req.on(
+                'data',
+                chunk => {
 
-        req.on('error', reject);
-    });
+                    body +=
+                        chunk.toString();
+
+                    // safety limit
+                    if (
+                        body.length >
+                        10e6
+                    ) {
+                        reject(
+                            new Error(
+                                'Body too large'
+                            )
+                        );
+                    }
+                }
+            );
+
+            req.on(
+                'end',
+                () => {
+
+                    try {
+
+                        resolve(
+                            body
+                                ? JSON.parse(body)
+                                : {}
+                        );
+
+                    }
+                    catch {
+
+                        resolve({});
+                    }
+                }
+            );
+
+            req.on(
+                'error',
+                reject
+            );
+        }
+    );
 }
 
 // ========================================
@@ -119,16 +169,23 @@ function parseBody(req) {
 const server =
     http.createServer(
         async (req, res) => {
+
             try {
+
                 applyCors(res);
 
                 // ====================================
-                // PREFLIGHT
+                // OPTIONS
                 // ====================================
 
-                if (req.method === 'OPTIONS') {
+                if (
+                    req.method === 'OPTIONS'
+                ) {
+
                     res.writeHead(200);
+
                     res.end();
+
                     return;
                 }
 
@@ -148,7 +205,10 @@ const server =
                     req.method === 'POST' &&
                     req.url === '/api/auth'
                 ) {
-                    return auth(req, res);
+
+                    await auth(req, res);
+
+                    return;
                 }
 
                 // PROFILE
@@ -156,7 +216,10 @@ const server =
                     req.method === 'POST' &&
                     req.url === '/api/profile'
                 ) {
-                    return profile(req, res);
+
+                    await profile(req, res);
+
+                    return;
                 }
 
                 // START SESSION
@@ -164,7 +227,10 @@ const server =
                     req.method === 'POST' &&
                     req.url === '/api/start-session'
                 ) {
-                    return startSession(req, res);
+
+                    await startSession(req, res);
+
+                    return;
                 }
 
                 // BEGIN BILLING
@@ -172,7 +238,10 @@ const server =
                     req.method === 'POST' &&
                     req.url === '/api/begin-billing'
                 ) {
-                    return beginBilling(req, res);
+
+                    await beginBilling(req, res);
+
+                    return;
                 }
 
                 // END SESSION
@@ -180,7 +249,10 @@ const server =
                     req.method === 'POST' &&
                     req.url === '/api/end-session'
                 ) {
-                    return endSession(req, res);
+
+                    await endSession(req, res);
+
+                    return;
                 }
 
                 // HEARTBEAT
@@ -188,18 +260,26 @@ const server =
                     req.method === 'POST' &&
                     req.url === '/api/heartbeat'
                 ) {
-                    return heartbeat(req, res);
+
+                    await heartbeat(req, res);
+
+                    return;
                 }
 
                 // ====================================
                 // HEALTH CHECK
                 // ====================================
 
-                if (req.url === '/health') {
-                    return sendJson(res, 200, {
+                if (
+                    req.url === '/health'
+                ) {
+
+                    sendJson(res, 200, {
                         success: true,
                         server: 'online'
                     });
+
+                    return;
                 }
 
                 // ====================================
@@ -219,42 +299,72 @@ const server =
                         )
                     );
 
-                // prevent path escape
-                if (!filePath.startsWith(publicDir)) {
-                    return sendJson(res, 403, {
+                // ====================================
+                // SECURITY
+                // ====================================
+
+                if (
+                    !filePath.startsWith(
+                        publicDir
+                    )
+                ) {
+
+                    sendJson(res, 403, {
                         error: 'Forbidden'
                     });
+
+                    return;
                 }
+
+                // ====================================
+                // STATIC FILE
+                // ====================================
 
                 fs.readFile(
                     filePath,
                     (err, content) => {
+
                         if (err) {
+
                             console.error(
                                 'STATIC FILE ERROR:',
                                 err.message
                             );
 
-                            return sendJson(res, 404, {
+                            sendJson(res, 404, {
                                 error: 'Not found'
                             });
+
+                            return;
                         }
 
                         const ext =
-                            path.extname(filePath);
+                            path.extname(
+                                filePath
+                            );
 
                         const contentType =
-                            mimeTypes[ext] ||
-                            'application/octet-stream';
+                            mimeTypes[ext]
+                            || 'application/octet-stream';
+
+                        if (
+                            res.headersSent
+                        ) {
+                            return;
+                        }
 
                         res.writeHead(200, {
-                            'Content-Type': contentType
+                            'Content-Type':
+                                contentType
                         });
 
                         res.end(content);
-                    });
+                    }
+                );
+
             }
             catch (err) {
+
                 console.error(
                     'SERVER ERROR:',
                     err
@@ -263,8 +373,11 @@ const server =
                 sendJson(res, 500, {
                     error: err.message
                 });
+
+                return;
             }
-        });
+        }
+    );
 
 // ========================================
 // START SERVER
@@ -273,8 +386,12 @@ const server =
 const PORT =
     process.env.PORT || 3000;
 
-server.listen(PORT, () => {
-    console.log(
-        `SERVER RUNNING ON PORT ${PORT}`
-    );
-});
+server.listen(
+    PORT,
+    () => {
+
+        console.log(
+            `SERVER RUNNING ON PORT ${PORT}`
+        );
+    }
+);
