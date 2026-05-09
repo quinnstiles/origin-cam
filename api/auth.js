@@ -18,50 +18,138 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-    const { type, email, password, name } = req.body;
 
-    if (!type || !email || !password) {
-        return res.status(400).json({ error: "Missing fields" });
+    if (req.method !== 'POST') {
+        return res.status(405).json({
+            error: 'Method not allowed'
+        });
     }
 
-    // ================= REGISTER =========
-    if (type === "register") {
-        if (!name) {
-            return res.status(400).json({ error: "Name required" });
-        }
+    try {
 
-        const { data, error } = await supabase.auth.admin.createUser({
+        const {
+            type,
             email,
             password,
-            email_confirm: true   // 🔥 THIS IS THE FIX
+            name
+        } = req.body;
+
+        if (!type || !email || !password) {
+            return res.status(400).json({
+                error: 'Missing fields'
+            });
+        }
+
+        // ====================================
+        // REGISTER
+        // ====================================
+
+        if (type === 'register') {
+
+            if (!name) {
+                return res.status(400).json({
+                    error: 'Name required'
+                });
+            }
+
+            const {
+                data,
+                error
+            } =
+                await supabase.auth.admin.createUser({
+                    email,
+                    password,
+                    email_confirm: true
+                });
+
+            if (error) {
+                return res.status(400).json({
+                    error: error.message
+                });
+            }
+
+            // create profile
+            await supabase
+                .from('profiles')
+                .insert({
+                    id: data.user.id,
+                    full_name: name,
+                    remaining_seconds: 0,
+                    total_used_seconds: 0
+                });
+
+            return res.status(200).json({
+                success: true
+            });
+        }
+
+        // ====================================
+        // LOGIN
+        // ====================================
+
+        if (type === 'login') {
+
+            const {
+                data,
+                error
+            } =
+                await supabase.auth.signInWithPassword({
+                    email,
+                    password
+                });
+
+            if (error || !data.session) {
+                return res.status(401).json({
+                    error: 'Invalid login'
+                });
+            }
+
+            const user = data.user;
+
+            const {
+                data: profile,
+                error: profileError
+            } =
+                await supabase
+                    .from('profiles')
+                    .select(`
+                    id,
+                    full_name,
+                    remaining_seconds
+                `)
+                    .eq('id', user.id)
+                    .single();
+
+            if (profileError || !profile) {
+                return res.status(404).json({
+                    error: 'Profile not found'
+                });
+            }
+
+            return res.status(200).json({
+                sessionToken:
+                    data.session.access_token,
+
+                profile: {
+                    id: profile.id,
+                    name: profile.full_name || '',
+                    seconds:
+                        profile.remaining_seconds
+                }
+            });
+        }
+
+        return res.status(400).json({
+            error: 'Invalid auth type'
         });
 
-        if (error) return res.status(400).json({ error: error.message });
-
-        // 🔥 create profile row
-        await supabase.from("profiles").insert({
-            id: data.user.id,
-            full_name: name,
-        });
-
-        return res.json({ success: true });
     }
+    catch (err) {
 
-    // ================= LOGIN =================
-    if (type === "login") {
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password
+        console.error(err);
+
+        return res.status(500).json({
+            error: err.message
         });
-
-        if (error) return res.status(400).json({ error: error.message });
-
-        const token = jwt.sign(
-            { user_id: data.user.id },
-            process.env.JWT_SECRET,
-            { expiresIn: "1h" }
-        );
-
-        return res.json({ token });
     }
 }

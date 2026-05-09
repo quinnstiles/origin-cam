@@ -18,31 +18,76 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
+
+    if (req.method !== 'POST') {
+        return res.status(405).json({
+            error: 'Method not allowed'
+        });
+    }
+
     try {
+
         const { token } = req.body;
 
-        const { data: { user }, error } =
+        if (!token) {
+            return res.status(401).json({
+                success: false
+            });
+        }
+
+        // ====================================
+        // VALIDATE TOKEN
+        // ====================================
+
+        const {
+            data: { user },
+            error
+        } =
             await supabase.auth.getUser(token);
 
         if (error || !user) {
-            return res.json({ success: false });
+            return res.status(401).json({
+                success: false
+            });
         }
 
-        const userId = user.id;
+        // ====================================
+        // GET PROFILE
+        // ====================================
 
-        const { data } = await supabase
-            .from('profiles')
-            .select('full_name, remaining_seconds')
-            .eq('id', decoded.user_id)
-            .single();
+        const {
+            data: profile,
+            error: profileError
+        } =
+            await supabase
+                .from('profiles')
+                .select(`
+                full_name,
+                remaining_seconds
+            `)
+                .eq('id', user.id)
+                .single();
 
-        return res.json({
+        if (profileError || !profile) {
+            return res.status(404).json({
+                success: false
+            });
+        }
+
+        return res.status(200).json({
             success: true,
-            user: data.full_name,
-            seconds: data.remaining_seconds
+            user: profile.full_name,
+            seconds:
+                profile.remaining_seconds
         });
 
-    } catch {
-        return res.json({ success: false });
+    }
+    catch (err) {
+
+        console.error(err);
+
+        return res.status(500).json({
+            success: false
+        });
     }
 }
