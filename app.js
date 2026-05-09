@@ -15,6 +15,9 @@ import './session-manager.js';
 // API ROUTES
 // ========================================
 
+import auth from './api/auth.js';
+import profile from './api/profile.js';
+
 import startSession from './api/start-session.js';
 import beginBilling from './api/begin-billing.js';
 import endSession from './api/end-session.js';
@@ -113,133 +116,155 @@ function parseBody(req) {
 // SERVER
 // ========================================
 
-const server = http.createServer(
-    async (req, res) => {
-        try {
-            applyCors(res);
+const server =
+    http.createServer(
+        async (req, res) => {
+            try {
+                applyCors(res);
 
-            // ====================================
-            // PREFLIGHT
-            // ====================================
+                // ====================================
+                // PREFLIGHT
+                // ====================================
 
-            if (req.method === 'OPTIONS') {
-                res.writeHead(200);
-                res.end();
-                return;
+                if (req.method === 'OPTIONS') {
+                    res.writeHead(200);
+                    res.end();
+                    return;
+                }
+
+                // ====================================
+                // PARSE BODY
+                // ====================================
+
+                req.body =
+                    await parseBody(req);
+
+                // ====================================
+                // API ROUTES
+                // ====================================
+
+                // AUTH
+                if (
+                    req.method === 'POST' &&
+                    req.url === '/api/auth'
+                ) {
+                    return auth(req, res);
+                }
+
+                // PROFILE
+                if (
+                    req.method === 'POST' &&
+                    req.url === '/api/profile'
+                ) {
+                    return profile(req, res);
+                }
+
+                // START SESSION
+                if (
+                    req.method === 'POST' &&
+                    req.url === '/api/start-session'
+                ) {
+                    return startSession(req, res);
+                }
+
+                // BEGIN BILLING
+                if (
+                    req.method === 'POST' &&
+                    req.url === '/api/begin-billing'
+                ) {
+                    return beginBilling(req, res);
+                }
+
+                // END SESSION
+                if (
+                    req.method === 'POST' &&
+                    req.url === '/api/end-session'
+                ) {
+                    return endSession(req, res);
+                }
+
+                // HEARTBEAT
+                if (
+                    req.method === 'POST' &&
+                    req.url === '/api/heartbeat'
+                ) {
+                    return heartbeat(req, res);
+                }
+
+                // ====================================
+                // HEALTH CHECK
+                // ====================================
+
+                if (req.url === '/health') {
+                    return sendJson(res, 200, {
+                        success: true,
+                        server: 'online'
+                    });
+                }
+
+                // ====================================
+                // STATIC WEBSITE
+                // ====================================
+
+                let requestPath =
+                    req.url === '/'
+                        ? '/index.html'
+                        : req.url;
+
+                let filePath =
+                    path.normalize(
+                        path.join(
+                            publicDir,
+                            requestPath
+                        )
+                    );
+
+                // prevent path escape
+                if (!filePath.startsWith(publicDir)) {
+                    return sendJson(res, 403, {
+                        error: 'Forbidden'
+                    });
+                }
+
+                fs.readFile(
+                    filePath,
+                    (err, content) => {
+                        if (err) {
+                            console.error(
+                                'STATIC FILE ERROR:',
+                                err.message
+                            );
+
+                            return sendJson(res, 404, {
+                                error: 'Not found'
+                            });
+                        }
+
+                        const ext =
+                            path.extname(filePath);
+
+                        const contentType =
+                            mimeTypes[ext] ||
+                            'application/octet-stream';
+
+                        res.writeHead(200, {
+                            'Content-Type': contentType
+                        });
+
+                        res.end(content);
+                    });
             }
-
-            // ====================================
-            // PARSE BODY
-            // ====================================
-
-            req.body = await parseBody(req);
-
-            // ====================================
-            // API ROUTES
-            // ====================================
-
-            if (
-                req.method === 'POST' &&
-                req.url === '/api/start-session'
-            ) {
-                return startSession(req, res);
-            }
-
-            if (
-                req.method === 'POST' &&
-                req.url === '/api/begin-billing'
-            ) {
-                return beginBilling(req, res);
-            }
-
-            if (
-                req.method === 'POST' &&
-                req.url === '/api/end-session'
-            ) {
-                return endSession(req, res);
-            }
-
-            if (
-                req.method === 'POST' &&
-                req.url === '/api/heartbeat'
-            ) {
-                return heartbeat(req, res);
-            }
-
-            // ====================================
-            // HEALTH CHECK
-            // ====================================
-
-            if (req.url === '/health') {
-                return sendJson(res, 200, {
-                    success: true,
-                    server: 'online'
-                });
-            }
-
-            // ====================================
-            // STATIC FILES
-            // ====================================
-
-            let requestPath =
-                req.url === '/'
-                    ? '/index.html'
-                    : req.url;
-
-            let filePath =
-                path.normalize(
-                    path.join(
-                        publicDir,
-                        requestPath
-                    )
+            catch (err) {
+                console.error(
+                    'SERVER ERROR:',
+                    err
                 );
 
-            // prevent path escape
-            if (!filePath.startsWith(publicDir)) {
-                return sendJson(res, 403, {
-                    error: 'Forbidden'
+                sendJson(res, 500, {
+                    error: err.message
                 });
             }
-
-            fs.readFile(
-                filePath,
-                (err, content) => {
-                    if (err) {
-                        console.error(
-                            'STATIC FILE ERROR:',
-                            err.message
-                        );
-
-                        return sendJson(res, 404, {
-                            error: 'Not found'
-                        });
-                    }
-
-                    const ext =
-                        path.extname(filePath);
-
-                    const contentType =
-                        mimeTypes[ext] ||
-                        'application/octet-stream';
-
-                    res.writeHead(200, {
-                        'Content-Type': contentType
-                    });
-
-                    res.end(content);
-                });
-        }
-        catch (err) {
-            console.error(
-                'SERVER ERROR:',
-                err
-            );
-
-            sendJson(res, 500, {
-                error: err.message
-            });
-        }
-    });
+        });
 
 // ========================================
 // START SERVER
