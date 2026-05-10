@@ -22,10 +22,11 @@ const supabase = createClient(
 );
 
 // ========================================
-// RESPONSE
+// JSON RESPONSE
 // ========================================
 
 function sendJson(res, status, data) {
+
     if (res.headersSent)
         return;
 
@@ -37,11 +38,17 @@ function sendJson(res, status, data) {
 }
 
 // ========================================
-// START SESSION
+// HANDLER
 // ========================================
 
 export default async function handler(req, res) {
+
+    // ====================================
+    // METHOD CHECK
+    // ====================================
+
     if (req.method !== 'POST') {
+
         sendJson(res, 405, {
             error: 'Method not allowed'
         });
@@ -50,8 +57,9 @@ export default async function handler(req, res) {
     }
 
     try {
+
         // ====================================
-        // AUTH
+        // AUTH TOKEN
         // ====================================
 
         const token =
@@ -59,6 +67,7 @@ export default async function handler(req, res) {
                 ?.split(' ')[1];
 
         if (!token) {
+
             sendJson(res, 401, {
                 error: 'No token'
             });
@@ -66,13 +75,18 @@ export default async function handler(req, res) {
             return;
         }
 
+        // ====================================
+        // VERIFY USER
+        // ====================================
+
         const {
             data: { user },
-            error
+            error: authError
         } =
             await supabase.auth.getUser(token);
 
-        if (error || !user) {
+        if (authError || !user) {
+
             sendJson(res, 401, {
                 error: 'Invalid token'
             });
@@ -81,22 +95,63 @@ export default async function handler(req, res) {
         }
 
         // ====================================
-        // SUCCESS
+        // GET PROFILE
+        // ====================================
+
+        const {
+            data: profile,
+            error: profileError
+        } =
+            await supabase
+                .from('profiles')
+                .select('remaining_seconds')
+                .eq('id', user.id)
+                .single();
+
+        if (profileError || !profile) {
+
+            sendJson(res, 404, {
+                error: 'Profile not found'
+            });
+
+            return;
+        }
+
+        // ====================================
+        // CHECK TIME
+        // ====================================
+
+        if (profile.remaining_seconds <= 0) {
+
+            sendJson(res, 403, {
+                error: 'No remaining time'
+            });
+
+            return;
+        }
+
+        // ====================================
+        // RETURN DEcart KEY
         // ====================================
 
         sendJson(res, 200, {
 
             success: true,
 
-            decartKey:
-                process.env.DECART_API_KEY
+            apiKey:
+                process.env.DECART_API_KEY,
+
+            remaining_seconds:
+                profile.remaining_seconds
         });
 
         return;
+
     }
     catch (err) {
+
         console.error(
-            'START SESSION ERROR:',
+            'DECART PROXY ERROR:',
             err
         );
 
