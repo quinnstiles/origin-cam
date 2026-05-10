@@ -240,6 +240,40 @@ export default async function handler(req, res) {
             session.id
         );
 
+        setTimeout(async () => {
+
+            try {
+
+                const active =
+                    global.activeSessions?.[
+                    session.id
+                    ];
+
+                if (!active) {
+                    return;
+                }
+
+                console.log(
+                    '⏰ SESSION EXPIRED:',
+                    session.id
+                );
+
+                await finalizeSession(
+                    active
+                );
+
+            }
+            catch (err) {
+
+                console.error(
+                    'AUTO END ERROR:',
+                    err
+                );
+            }
+
+        },
+            fullDuration * 1000);
+
         // ====================================
         // RESPONSE
         // ====================================
