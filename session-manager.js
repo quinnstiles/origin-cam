@@ -7,6 +7,10 @@ import {
     createClient
 } from '@supabase/supabase-js';
 
+// ========================================
+// SUPABASE
+// ========================================
+
 const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -16,139 +20,235 @@ const supabase = createClient(
         }
     }
 );
+
 // ========================================
 // GLOBAL MEMORY
 // ========================================
 
-if (!global.activeSessions) {
-    global.activeSessions = {};
+global.activeSessions =
+    global.activeSessions || {};
+
+global.watchdogStarted =
+    global.watchdogStarted || false;
+
+// ========================================
+// FINALIZE SESSION
+// ========================================
+
+export async function finalizeSession(session) {
+    try {
+        const now = Date.now();
+
+        // =========================
+        // REMAINING TIME
+        // =========================
+
+        let remainingSeconds =
+            Math.floor(
+                (session.expiresAt - now) / 1000
+            );
+
+        if (remainingSeconds < 0) {
+            remainingSeconds = 0;
+        }
+
+        // =========================
+        // USED TIME
+        // =========================
+
+        let usedSeconds =
+            session.fullDuration -
+            remainingSeconds;
+
+        if (usedSeconds < 0) {
+            usedSeconds = 0;
+        }
+
+        // =========================
+        // UPDATE SESSION
+        // =========================
+
+        await supabase
+            .from('sessions')
+            .update({
+                status: 'ended',
+
+                used_seconds:
+                    usedSeconds,
+
+                end_time:
+                    new Date()
+                        .toISOString()
+            })
+            .eq('id', session.sessionId);
+
+        // =========================
+        // UPDATE PROFILE
+        // =========================
+
+        await supabase
+            .from('profiles')
+            .update({
+                remaining_seconds:
+                    remainingSeconds
+            })
+            .eq('id', session.userId);
+
+        // =========================
+        // REMOVE MEMORY
+        // =========================
+
+        delete global.activeSessions[
+            session.sessionId
+        ];
+
+        console.log(
+            'SESSION FINALIZED:',
+            session.sessionId
+        );
+    }
+    catch (err) {
+        console.error(
+            'FINALIZE ERROR:',
+            err
+        );
+    }
 }
 
 // ========================================
-// CLEANUP LOOP
+// WATCHDOG
 // ========================================
 
-const HEARTBEAT_TIMEOUT = 15000; // 15 sec
+export function startWatchdog() {
+    if (global.watchdogStarted)
+        return;
 
-setInterval(async () => {
-    const now = Date.now();
+    global.watchdogStarted = true;
 
-    const sessions =
-        Object.values(global.activeSessions);
+    setInterval(async () => {
+        const now = Date.now();
 
-    for (const session of sessions) {
-        try {
-            const heartbeatAge =
-                now - session.lastHeartbeat;
+        for (const id in global.activeSessions) {
+            const session =
+                global.activeSessions[id];
 
             const expired =
                 now >= session.expiresAt;
 
-            const deadHeartbeat =
-                heartbeatAge > HEARTBEAT_TIMEOUT;
+            const heartbeatDead =
+                now - session.lastHeartbeat >
+                20000;
 
-            if (!expired && !deadHeartbeat) {
+            if (expired || heartbeatDead) {
+                console.log(
+                    'AUTO FINALIZING:',
+                    id
+                );
+
+                await finalizeSession(
+                    session
+                );
+            }
+        }
+
+    }, 5000);
+}
+
+// ========================================
+// RESTORE ACTIVE SESSIONS
+// ========================================
+
+export async function restoreSessions() {
+    try {
+        console.log(
+            'RESTORING SESSIONS...'
+        );
+
+        const {
+            data: sessions,
+            error
+        } = await supabase
+            .from('sessions')
+            .select('*')
+            .eq('status', 'active');
+
+        if (error) {
+            console.error(error);
+            return;
+        }
+
+        const now = Date.now();
+
+        for (const session of sessions) {
+            const expiresAt =
+                new Date(
+                    session.expires_at
+                ).getTime();
+
+            // =====================
+            // EXPIRED WHILE OFFLINE
+            // =====================
+
+            if (now >= expiresAt) {
+                await finalizeSession({
+                    sessionId:
+                        session.id,
+
+                    userId:
+                        session.user_id,
+
+                    expiresAt,
+
+                    fullDuration:
+                        session.remaining_at_start
+                });
+
                 continue;
             }
 
-            console.log(
-                'ENDING SESSION:',
-                session.sessionId
-            );
+            // =====================
+            // RESTORE TO MEMORY
+            // =====================
 
-            // ====================================
-            // CALCULATE USED TIME
-            // ====================================
+            global.activeSessions[
+                session.id
+            ] = {
 
-            let usedSeconds =
-                Math.floor(
-                    (now - session.startTime) / 1000
-                );
+                sessionId:
+                    session.id,
 
-            if (usedSeconds < 0)
-                usedSeconds = 0;
+                userId:
+                    session.user_id,
 
-            if (
-                usedSeconds >
-                session.remainingAtStart
-            ) {
-                usedSeconds =
-                    session.remainingAtStart;
-            }
+                startedAt:
+                    new Date(
+                        session.start_time
+                    ).getTime(),
 
-            let remainingSeconds =
-                session.remainingAtStart -
-                usedSeconds;
+                expiresAt,
 
-            if (remainingSeconds < 0)
-                remainingSeconds = 0;
+                remainingAtStart:
+                    session.remaining_at_start,
 
-            // ====================================
-            // GET PROFILE
-            // ====================================
+                fullDuration:
+                    session.remaining_at_start,
 
-            const {
-                data: profile,
-                error: profileError
-            } = await supabase
-                .from('profiles')
-                .select(`
-                    remaining_seconds,
-                    total_used_seconds
-                `)
-                .eq('id', session.userId)
-                .single();
-
-            if (profileError || !profile) {
-                console.error(
-                    'PROFILE ERROR',
-                    profileError
-                );
-
-                delete global.activeSessions[
-                    session.sessionId
-                ];
-
-                continue;
-            }
-
-            // ====================================
-            // UPDATE PROFILE
-            // ====================================
-
-            await supabase
-                .from('profiles')
-                .update({
-
-                    remaining_seconds:
-                        remainingSeconds,
-
-                    total_used_seconds:
-                        profile.total_used_seconds +
-                        usedSeconds
-
-                })
-                .eq('id', session.userId);
-
-            // ====================================
-            // REMOVE SESSION
-            // ====================================
-
-            delete global.activeSessions[
-                session.sessionId
-            ];
+                lastHeartbeat:
+                    Date.now()
+            };
 
             console.log(
-                'SESSION CLOSED:',
-                session.sessionId
+                'RESTORED SESSION:',
+                session.id
             );
         }
-        catch (err) {
-            console.error(
-                'SESSION MANAGER ERROR:',
-                err
-            );
-        }
+
+        startWatchdog();
     }
-
-}, 5000);
+    catch (err) {
+        console.error(
+            'RESTORE ERROR:',
+            err
+        );
+    }
+}

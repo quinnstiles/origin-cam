@@ -9,7 +9,9 @@ import url from 'url';
 // START SESSION MANAGER
 // ========================================
 
-import './session-manager.js';
+import {
+    restoreSessions
+} from './session-manager.js';
 
 // ========================================
 // API ROUTES
@@ -18,7 +20,6 @@ import './session-manager.js';
 import auth from './api/auth.js';
 import profile from './api/profile.js';
 
-import startSession from './api/start-session.js';
 import beginBilling from './api/begin-billing.js';
 import endSession from './api/end-session.js';
 import heartbeat from './api/heartbeat.js';
@@ -222,16 +223,7 @@ const server =
                     return;
                 }
 
-                // START SESSION
-                if (
-                    req.method === 'POST' &&
-                    req.url === '/api/start-session'
-                ) {
 
-                    await startSession(req, res);
-
-                    return;
-                }
 
                 // BEGIN BILLING
                 if (
@@ -386,12 +378,11 @@ const server =
 const PORT =
     process.env.PORT || 3000;
 
-server.listen(
-    PORT,
-    () => {
+server.listen(PORT, async () => {
 
-        console.log(
-            `SERVER RUNNING ON PORT ${PORT}`
-        );
-    }
-);
+    console.log(
+        `SERVER RUNNING ON PORT ${PORT}`
+    );
+
+    await restoreSessions();
+});

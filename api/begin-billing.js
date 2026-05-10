@@ -7,6 +7,11 @@ import {
     createClient
 } from '@supabase/supabase-js';
 
+import {
+    finalizeSession,
+    startWatchdog
+} from '../session-manager.js';
+
 // ========================================
 // SUPABASE
 // ========================================
@@ -48,128 +53,9 @@ global.activeSessions =
 global.watchdogStarted =
     global.watchdogStarted || false;
 
-// ========================================
-// FINALIZE SESSION
-// ========================================
 
-async function finalizeSession(session) {
 
-    try {
 
-        // already finalized
-        if (!global.activeSessions[session.sessionId]) {
-            return;
-        }
-
-        const now = Date.now();
-
-        const usedSeconds =
-            Math.floor(
-                (now - session.startedAt) / 1000
-            );
-
-        let remaining =
-            session.remainingAtStart -
-            usedSeconds;
-
-        if (remaining < 0) {
-            remaining = 0;
-        }
-
-        // ====================================
-        // UPDATE SESSION
-        // ====================================
-
-        await supabase
-            .from('sessions')
-            .update({
-                status: 'ended',
-                used_seconds: usedSeconds,
-                end_time: new Date().toISOString()
-            })
-            .eq('id', session.sessionId);
-
-        // ====================================
-        // UPDATE PROFILE
-        // ====================================
-
-        await supabase
-            .from('profiles')
-            .update({
-                remaining_seconds: remaining
-            })
-            .eq('id', session.userId);
-
-        // ====================================
-        // REMOVE FROM MEMORY
-        // ====================================
-
-        delete global.activeSessions[
-            session.sessionId
-        ];
-
-        console.log(
-            'SESSION FINALIZED:',
-            session.sessionId
-        );
-
-    }
-    catch (err) {
-
-        console.error(
-            'FINALIZE ERROR:',
-            err
-        );
-    }
-}
-
-// ========================================
-// WATCHDOG
-// ========================================
-
-function startWatchdog() {
-
-    if (global.watchdogStarted) {
-        return;
-    }
-
-    global.watchdogStarted = true;
-
-    setInterval(async () => {
-
-        const now = Date.now();
-
-        for (const id in global.activeSessions) {
-
-            const session =
-                global.activeSessions[id];
-
-            if (!session) {
-                continue;
-            }
-
-            const expired =
-                now >= session.expiresAt;
-
-            const heartbeatDead =
-                now - session.lastHeartbeat >
-                20000;
-
-            if (expired || heartbeatDead) {
-
-                console.log(
-                    'AUTO TERMINATING:',
-                    id
-                );
-
-                await finalizeSession(
-                    session
-                );
-            }
-        }
-
-    }, 5000);
-}
 
 // ========================================
 // API HANDLER
@@ -281,9 +167,19 @@ export default async function handler(req, res) {
 
         const now = Date.now();
 
+        const GRACE_SECONDS =
+            Number(
+                process.env
+                    .BILLING_GRACE_SECONDS || 10
+            );
+
+        const fullDuration =
+            profile.remaining_seconds +
+            GRACE_SECONDS;
+
         const expiresAt =
-            now +
-            (profile.remaining_seconds * 1000);
+            Date.now() +
+            (fullDuration * 1000);
 
         const {
             data: session,
@@ -297,7 +193,7 @@ export default async function handler(req, res) {
                     start_time:
                         new Date().toISOString(),
                     remaining_at_start:
-                        profile.remaining_seconds,
+                        fullDuration,
                     expires_at:
                         new Date(expiresAt)
                             .toISOString()
@@ -334,7 +230,9 @@ export default async function handler(req, res) {
             expiresAt,
 
             remainingAtStart:
-                profile.remaining_seconds
+                fullDuration,
+
+            fullDuration
         };
 
         console.log(

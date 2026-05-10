@@ -26,10 +26,8 @@ const supabase = createClient(
 // ========================================
 
 function sendJson(res, status, data) {
-
-    if (res.headersSent) {
+    if (res.headersSent)
         return;
-    }
 
     res.writeHead(status, {
         'Content-Type': 'application/json'
@@ -43,13 +41,11 @@ function sendJson(res, status, data) {
 // ========================================
 
 export default async function handler(req, res) {
-
     // ====================================
     // METHOD CHECK
     // ====================================
 
     if (req.method !== 'POST') {
-
         sendJson(res, 405, {
             error: 'Method not allowed'
         });
@@ -58,7 +54,6 @@ export default async function handler(req, res) {
     }
 
     try {
-
         // ====================================
         // AUTH
         // ====================================
@@ -68,7 +63,6 @@ export default async function handler(req, res) {
                 ?.split(' ')[1];
 
         if (!token) {
-
             sendJson(res, 401, {
                 error: 'No token'
             });
@@ -83,7 +77,6 @@ export default async function handler(req, res) {
             await supabase.auth.getUser(token);
 
         if (authError || !user) {
-
             sendJson(res, 401, {
                 error: 'Invalid token'
             });
@@ -109,7 +102,6 @@ export default async function handler(req, res) {
                 .single();
 
         if (sessionError || !session) {
-
             sendJson(res, 404, {
                 error: 'No active session'
             });
@@ -118,154 +110,97 @@ export default async function handler(req, res) {
         }
 
         // ====================================
-        // CALCULATE USED TIME
+        // MEMORY SESSION
+        // ====================================
+
+        const memorySession =
+            global.activeSessions?.[
+            session.id
+            ];
+
+        // ====================================
+        // FALLBACK RECOVERY
+        // ====================================
+
+        const expiresAt =
+            memorySession
+                ? memorySession.expiresAt
+                : new Date(
+                    session.expires_at
+                ).getTime();
+
+        const fullDuration =
+            memorySession
+                ? memorySession.fullDuration
+                : session.remaining_at_start;
+
+        // ====================================
+        // CALCULATE REMAINING
         // ====================================
 
         const now = Date.now();
 
-        const startTime =
-            new Date(
-                session.start_time
-            ).getTime();
-
-        let usedSeconds =
+        let remainingSeconds =
             Math.floor(
-                (now - startTime) / 1000
+                (expiresAt - now) / 1000
             );
 
+        if (remainingSeconds < 0) {
+            remainingSeconds = 0;
+        }
+
         // ====================================
-        // SAFETY
+        // CALCULATE USED
         // ====================================
+
+        let usedSeconds =
+            fullDuration -
+            remainingSeconds;
 
         if (usedSeconds < 0) {
             usedSeconds = 0;
         }
 
         // ====================================
-        // MAX DURATION CAP
-        // ====================================
-
-        if (
-            session.max_duration_seconds &&
-            usedSeconds >
-            session.max_duration_seconds
-        ) {
-
-            usedSeconds =
-                session.max_duration_seconds;
-        }
-
-        // ====================================
-        // GET PROFILE
-        // ====================================
-
-        const {
-            data: profile,
-            error: profileError
-        } =
-            await supabase
-                .from('profiles')
-                .select(`
-                    remaining_seconds,
-                    total_used_seconds
-                `)
-                .eq('id', userId)
-                .single();
-
-        if (profileError || !profile) {
-
-            sendJson(res, 404, {
-                error: 'Profile not found'
-            });
-
-            return;
-        }
-
-        // ====================================
-        // CALCULATE BALANCE
-        // ====================================
-
-        let newRemaining =
-            session.remaining_at_start -
-            usedSeconds;
-
-        if (newRemaining < 0) {
-            newRemaining = 0;
-        }
-
-        const expired =
-            newRemaining <= 0;
-
-        // ====================================
         // UPDATE SESSION
         // ====================================
 
-        const {
-            error: updateSessionError
-        } =
-            await supabase
-                .from('sessions')
-                .update({
+        await supabase
+            .from('sessions')
+            .update({
 
-                    status: 'ended',
+                status: 'ended',
 
-                    end_time:
-                        new Date(now)
-                            .toISOString(),
+                end_time:
+                    new Date(now)
+                        .toISOString(),
 
-                    used_seconds:
-                        usedSeconds,
+                used_seconds:
+                    usedSeconds,
 
-                    heartbeat_at:
-                        new Date(now)
-                            .toISOString()
+                heartbeat_at:
+                    new Date(now)
+                        .toISOString()
 
-                })
-                .eq('id', session.id);
-
-        if (updateSessionError) {
-
-            sendJson(res, 500, {
-                error:
-                    updateSessionError.message
-            });
-
-            return;
-        }
+            })
+            .eq('id', session.id);
 
         // ====================================
         // UPDATE PROFILE
         // ====================================
 
-        const {
-            error: updateProfileError
-        } =
-            await supabase
-                .from('profiles')
-                .update({
+        await supabase
+            .from('profiles')
+            .update({
 
-                    remaining_seconds:
-                        newRemaining,
+                remaining_seconds:
+                    remainingSeconds
 
-                    total_used_seconds:
-                        (profile.total_used_seconds || 0)
-                        + usedSeconds
-
-                })
-                .eq('id', userId);
-
-        if (updateProfileError) {
-
-            sendJson(res, 500, {
-                error:
-                    updateProfileError.message
-            });
-
-            return;
-        }
+            })
+            .eq('id', userId);
 
         // ====================================
-        // REMOVE MEMORY SESSION
+        // REMOVE MEMORY
         // ====================================
 
         if (
@@ -274,7 +209,6 @@ export default async function handler(req, res) {
             session.id
             ]
         ) {
-
             delete global.activeSessions[
                 session.id
             ];
@@ -288,21 +222,16 @@ export default async function handler(req, res) {
 
             success: true,
 
-            used_seconds:
-                usedSeconds,
-
             remaining_seconds:
-                newRemaining,
+                remainingSeconds,
 
-            expired
-
+            used_seconds:
+                usedSeconds
         });
 
         return;
-
     }
     catch (err) {
-
         console.error(
             'END SESSION ERROR:',
             err
