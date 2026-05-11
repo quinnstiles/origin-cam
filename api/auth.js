@@ -1,31 +1,22 @@
+// ========================================
+// FILE:
+// api/auth.js
+// ========================================
+
 import dotenv from 'dotenv';
 dotenv.config();
 
-import ws from 'ws';
-
-import {
-    createClient
-} from '@supabase/supabase-js';
+import supabase from '../lib/supabase.js';
 
 // ========================================
-// SUPABASE
+// JSON RESPONSE
 // ========================================
 
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-        realtime: {
-            transport: ws
-        }
-    }
-);
-
-// ========================================
-// JSON RESPONSE HELPER
-// ========================================
-
-function sendJson(res, status, data) {
+function sendJson(
+    res,
+    status,
+    data
+) {
 
     if (res.headersSent) {
         return;
@@ -35,14 +26,19 @@ function sendJson(res, status, data) {
         'Content-Type': 'application/json'
     });
 
-    res.end(JSON.stringify(data));
+    res.end(
+        JSON.stringify(data)
+    );
 }
 
 // ========================================
 // HANDLER
 // ========================================
 
-export default async function handler(req, res) {
+export default async function handler(
+    req,
+    res
+) {
 
     // ====================================
     // METHOD CHECK
@@ -70,7 +66,11 @@ export default async function handler(req, res) {
         // VALIDATION
         // ====================================
 
-        if (!type || !email || !password) {
+        if (
+            !type ||
+            !email ||
+            !password
+        ) {
 
             sendJson(res, 400, {
                 error: 'Missing fields'
@@ -98,11 +98,16 @@ export default async function handler(req, res) {
                 data,
                 error
             } =
-                await supabase.auth.admin.createUser({
-                    email,
-                    password,
-                    email_confirm: true
-                });
+                await supabase
+                    .auth
+                    .admin
+                    .createUser({
+
+                        email,
+                        password,
+
+                        email_confirm: true
+                    });
 
             if (error) {
 
@@ -113,9 +118,9 @@ export default async function handler(req, res) {
                 return;
             }
 
-            // ====================================
+            // ================================
             // CREATE PROFILE
-            // ====================================
+            // ================================
 
             const {
                 error: profileError
@@ -123,16 +128,22 @@ export default async function handler(req, res) {
                 await supabase
                     .from('profiles')
                     .insert({
-                        id: data.user.id,
-                        full_name: name,
-                        remaining_seconds: 0,
-                        total_used_seconds: 0
+
+                        id:
+                            data.user.id,
+
+                        full_name:
+                            name,
+
+                        remaining_seconds:
+                            0
                     });
 
             if (profileError) {
 
                 sendJson(res, 500, {
-                    error: profileError.message
+                    error:
+                        profileError.message
                 });
 
                 return;
@@ -155,12 +166,18 @@ export default async function handler(req, res) {
                 data,
                 error
             } =
-                await supabase.auth.signInWithPassword({
-                    email,
-                    password
-                });
+                await supabase
+                    .auth
+                    .signInWithPassword({
 
-            if (error || !data.session) {
+                        email,
+                        password
+                    });
+
+            if (
+                error ||
+                !data.session
+            ) {
 
                 sendJson(res, 401, {
                     error: 'Invalid login'
@@ -169,11 +186,12 @@ export default async function handler(req, res) {
                 return;
             }
 
-            const user = data.user;
+            const user =
+                data.user;
 
-            // ====================================
+            // ================================
             // GET PROFILE
-            // ====================================
+            // ================================
 
             const {
                 data: profile,
@@ -182,32 +200,46 @@ export default async function handler(req, res) {
                 await supabase
                     .from('profiles')
                     .select(`
-                        id,
                         full_name,
                         remaining_seconds
                     `)
                     .eq('id', user.id)
                     .single();
 
-            if (profileError || !profile) {
+            if (
+                profileError ||
+                !profile
+            ) {
 
                 sendJson(res, 404, {
-                    error: 'Profile not found'
+                    error:
+                        'Profile not found'
                 });
 
                 return;
             }
 
+            // ================================
+            // RESPONSE
+            // ================================
+
             sendJson(res, 200, {
 
-                sessionToken:
+                success: true,
+
+                token:
                     data.session.access_token,
 
                 profile: {
-                    id: profile.id,
-                    name: profile.full_name || '',
+
+                    id:
+                        user.id,
+
+                    name:
+                        profile.full_name || '',
+
                     seconds:
-                        profile.remaining_seconds
+                        profile.remaining_seconds || 0
                 }
             });
 
@@ -222,8 +254,6 @@ export default async function handler(req, res) {
             error: 'Invalid auth type'
         });
 
-        return;
-
     }
     catch (err) {
 
@@ -235,7 +265,5 @@ export default async function handler(req, res) {
         sendJson(res, 500, {
             error: err.message
         });
-
-        return;
     }
 }

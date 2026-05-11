@@ -1,31 +1,26 @@
+// ========================================
+// FILE:
+// api/profile.js
+// ========================================
+
 import dotenv from 'dotenv';
 dotenv.config();
 
-import ws from 'ws';
+import supabase from '../lib/supabase.js';
 
 import {
-    createClient
-} from '@supabase/supabase-js';
+    authenticateUser
+} from '../lib/auth.js';
 
 // ========================================
-// SUPABASE
+// JSON RESPONSE
 // ========================================
 
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-        realtime: {
-            transport: ws
-        }
-    }
-);
-
-// ========================================
-// JSON RESPONSE HELPER
-// ========================================
-
-function sendJson(res, status, data) {
+function sendJson(
+    res,
+    status,
+    data
+) {
 
     if (res.headersSent) {
         return;
@@ -35,14 +30,19 @@ function sendJson(res, status, data) {
         'Content-Type': 'application/json'
     });
 
-    res.end(JSON.stringify(data));
+    res.end(
+        JSON.stringify(data)
+    );
 }
 
 // ========================================
-// PROFILE
+// HANDLER
 // ========================================
 
-export default async function handler(req, res) {
+export default async function handler(
+    req,
+    res
+) {
 
     // ====================================
     // METHOD CHECK
@@ -59,41 +59,30 @@ export default async function handler(req, res) {
 
     try {
 
-        const { token } = req.body;
+        const { token } =
+            req.body;
 
         // ====================================
-        // VALIDATE TOKEN INPUT
+        // AUTH
         // ====================================
 
-        if (!token) {
+        const auth =
+            await authenticateUser(
+                token
+            );
+
+        if (!auth.success) {
 
             sendJson(res, 401, {
                 success: false,
-                error: 'No token'
+                error: auth.error
             });
 
             return;
         }
 
-        // ====================================
-        // VALIDATE TOKEN
-        // ====================================
-
-        const {
-            data: { user },
-            error
-        } =
-            await supabase.auth.getUser(token);
-
-        if (error || !user) {
-
-            sendJson(res, 401, {
-                success: false,
-                error: 'Invalid token'
-            });
-
-            return;
-        }
+        const user =
+            auth.user;
 
         // ====================================
         // GET PROFILE
@@ -101,7 +90,7 @@ export default async function handler(req, res) {
 
         const {
             data: profile,
-            error: profileError
+            error
         } =
             await supabase
                 .from('profiles')
@@ -112,33 +101,46 @@ export default async function handler(req, res) {
                 .eq('id', user.id)
                 .single();
 
-        if (profileError || !profile) {
+        // ====================================
+        // PROFILE ERROR
+        // ====================================
+
+        if (
+            error ||
+            !profile
+        ) {
 
             sendJson(res, 404, {
+
                 success: false,
-                error: 'Profile not found'
+
+                error:
+                    'Profile not found'
             });
 
             return;
         }
 
         // ====================================
-        // RESPONSE
+        // SUCCESS
         // ====================================
 
         sendJson(res, 200, {
 
             success: true,
 
-            user:
-                profile.full_name || '',
+            profile: {
 
-            seconds:
-                profile.remaining_seconds || 0
+                id:
+                    user.id,
+
+                name:
+                    profile.full_name || '',
+
+                seconds:
+                    profile.remaining_seconds || 0
+            }
         });
-
-        return;
-
     }
     catch (err) {
 
@@ -148,10 +150,11 @@ export default async function handler(req, res) {
         );
 
         sendJson(res, 500, {
-            success: false,
-            error: err.message
-        });
 
-        return;
+            success: false,
+
+            error:
+                err.message
+        });
     }
 }
