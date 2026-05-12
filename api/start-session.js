@@ -20,7 +20,7 @@ import {
 } from '../lib/session-store.js';
 
 import {
-    now
+    nowSeconds
 } from '../lib/time.js';
 
 import {
@@ -138,10 +138,10 @@ router.post(
                         user.id,
 
                     startedAt:
-                        now(),
+                        nowSeconds(),
 
                     lastHeartbeat:
-                        now(),
+                        nowSeconds(),
 
                     totalSeconds,
 
