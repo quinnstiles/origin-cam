@@ -1,151 +1,191 @@
 // ========================================
-// FILE:
-// api/start-session.js
+// IMPORTS
 // ========================================
 
-import dotenv from 'dotenv';
-dotenv.config();
+import express from 'express';
 
-import supabase from '../lib/supabase.js';
-
-import { authenticateUser } from '../lib/auth.js';
-import { createDecartSession } from '../lib/decart.js';
+import supabase
+    from '../lib/supabase.js';
 
 import {
-    canStartSession,
-    createSession,
-    forceCloseSession
-} from '../lib/sessions.js';
+    authMiddleware
+} from '../middleware/auth-middleware.js';
+
+import {
+    createDecartSession
+} from '../lib/decart.js';
+
+import {
+    createSession
+} from '../lib/session-store.js';
+
+import {
+    now
+} from '../lib/time.js';
+
+import {
+    ok,
+    fail
+} from '../utils/response.js';
 
 // ========================================
-// RESPONSE HELPER
+// ROUTER
 // ========================================
 
-function sendJson(res, status, data) {
+const router =
+    express.Router();
 
-    if (res.headersSent) return;
+// ========================================
+// CONFIG
+// ========================================
 
-    res.writeHead(status, {
-        'Content-Type': 'application/json'
+const GRACE_SECONDS = 10;
+
+// ========================================
+// START SESSION
+// ========================================
+
+router.post(
+    '/',
+    authMiddleware,
+    async (req, res) => {
+        try {
+
+            const user =
+                req.user;
+
+            // ====================================
+            // GET PROFILE
+            // ====================================
+
+            const {
+                data: profile,
+                error
+            } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', user.id)
+                .single();
+
+            if (
+                error ||
+                !profile
+            ) {
+                return fail(
+                    res,
+                    404,
+                    'Profile not found'
+                );
+            }
+
+            // ====================================
+            // CHECK TIME
+            // ====================================
+
+            const remaining =
+                profile.remaining_seconds || 0;
+
+            if (remaining <= 0) {
+
+                return fail(
+                    res,
+                    403,
+                    'No remaining time'
+                );
+            }
+
+            // ====================================
+            // TOTAL SESSION
+            // ====================================
+
+            const totalSeconds =
+                remaining +
+                GRACE_SECONDS;
+
+            // ====================================
+            // CREATE DECart SESSION
+            // ====================================
+
+            const decart =
+                await createDecartSession({
+
+                    durationSeconds:
+                        totalSeconds,
+
+                    userId:
+                        user.id
+                });
+
+            if (!decart.success) {
+
+                return fail(
+                    res,
+                    500,
+                    decart.error
+                );
+            }
+
+            // ====================================
+            // STORE MEMORY SESSION
+            // ====================================
+
+            createSession(
+
+                decart.sessionId,
+
+                {
+                    userId:
+                        user.id,
+
+                    startedAt:
+                        now(),
+
+                    lastHeartbeat:
+                        now(),
+
+                    totalSeconds,
+
+                    graceSeconds:
+                        GRACE_SECONDS,
+
+                    originalSeconds:
+                        remaining,
+
+                    decartSessionId:
+                        decart.sessionId
+                }
+            );
+
+            // ====================================
+            // RESPONSE
+            // ====================================
+
+            return ok(res, {
+
+                sessionId:
+                    decart.sessionId,
+
+                clientToken:
+                    decart.clientToken,
+
+                totalSeconds,
+
+                remainingSeconds:
+                    remaining
+            });
+
+        } catch (err) {
+
+            return fail(
+                res,
+                500,
+                err.message
+            );
+        }
     });
 
-    res.end(JSON.stringify(data));
-}
-
 // ========================================
-// HANDLER
+// EXPORT
 // ========================================
 
-export default async function handler(req, res) {
-
-    if (req.method !== 'POST') {
-
-        sendJson(res, 405, {
-            error: 'Method not allowed'
-        });
-
-        return;
-    }
-
-    try {
-
-        const { token } = req.body;
-
-        // ====================================
-        // AUTH USER
-        // ====================================
-
-        const auth =
-            await authenticateUser(token);
-
-        if (!auth.success) {
-
-            sendJson(res, 401, {
-                error: auth.error
-            });
-
-            return;
-        }
-
-        const user = auth.user;
-
-        // ====================================
-        // CHECK IF USER CAN START
-        // ====================================
-
-        const check =
-            await canStartSession(user.id);
-
-        if (!check.ok) {
-
-            sendJson(res, 403, {
-                error: check.reason
-            });
-
-            return;
-        }
-
-        // ====================================
-        // SAFETY: FORCE CLOSE OLD SESSION IF EXISTS (RECOVERY)
-        // ====================================
-
-        await forceCloseSession(user.id, 'auto_cleanup');
-
-        // ====================================
-        // CREATE DECart SESSION
-        // ====================================
-
-        const decart =
-            await createDecartSession({
-                durationSeconds: check.remaining,
-                userId: user.id
-            });
-
-        if (!decart.success) {
-
-            sendJson(res, 500, {
-                error: decart.error
-            });
-
-            return;
-        }
-
-        // ====================================
-        // STORE SESSION IN DB
-        // ====================================
-
-        await createSession({
-            userId: user.id,
-            decartSessionId: decart.sessionId,
-            duration: check.remaining
-        });
-
-        // ====================================
-        // RESPONSE TO CLIENT
-        // ====================================
-
-        sendJson(res, 200, {
-
-            success: true,
-
-            sessionId: decart.sessionId,
-
-            token: decart.clientToken,
-
-            remaining_seconds: check.remaining,
-
-            expiresAt: decart.expiresAt || null
-        });
-
-    } catch (err) {
-
-        console.error(
-            'START SESSION ERROR:',
-            err
-        );
-
-        sendJson(res, 500, {
-            error: err.message
-        });
-    }
-}
+export default router;

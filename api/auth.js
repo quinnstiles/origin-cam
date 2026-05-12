@@ -1,173 +1,62 @@
 // ========================================
-// FILE:
-// api/auth.js
+// IMPORTS
 // ========================================
 
-import dotenv from 'dotenv';
-dotenv.config();
+import express from 'express';
 
-import supabase from '../lib/supabase.js';
+import supabase
+    from '../lib/supabase.js';
 
-// ========================================
-// JSON RESPONSE
-// ========================================
-
-function sendJson(
-    res,
-    status,
-    data
-) {
-
-    if (res.headersSent) {
-        return;
-    }
-
-    res.writeHead(status, {
-        'Content-Type': 'application/json'
-    });
-
-    res.end(
-        JSON.stringify(data)
-    );
-}
+import {
+    ok,
+    fail
+} from '../utils/response.js';
 
 // ========================================
-// HANDLER
+// ROUTER
 // ========================================
 
-export default async function handler(
-    req,
-    res
-) {
+const router =
+    express.Router();
 
-    // ====================================
-    // METHOD CHECK
-    // ====================================
+// ========================================
+// LOGIN
+// ========================================
 
-    if (req.method !== 'POST') {
+router.post(
+    '/',
+    async (req, res) => {
+        try {
 
-        sendJson(res, 405, {
-            error: 'Method not allowed'
-        });
+            const {
+                email,
+                password
+            } = req.body;
 
-        return;
-    }
+            // ====================================
+            // VALIDATION
+            // ====================================
 
-    try {
-
-        const {
-            type,
-            email,
-            password,
-            name
-        } = req.body;
-
-        // ====================================
-        // VALIDATION
-        // ====================================
-
-        if (
-            !type ||
-            !email ||
-            !password
-        ) {
-
-            sendJson(res, 400, {
-                error: 'Missing fields'
-            });
-
-            return;
-        }
-
-        // ====================================
-        // REGISTER
-        // ====================================
-
-        if (type === 'register') {
-
-            if (!name) {
-
-                sendJson(res, 400, {
-                    error: 'Name required'
-                });
-
-                return;
+            if (
+                !email ||
+                !password
+            ) {
+                return fail(
+                    res,
+                    400,
+                    'Missing email or password'
+                );
             }
+
+            // ====================================
+            // LOGIN
+            // ====================================
 
             const {
                 data,
                 error
             } =
-                await supabase
-                    .auth
-                    .admin
-                    .createUser({
-
-                        email,
-                        password,
-
-                        email_confirm: true
-                    });
-
-            if (error) {
-
-                sendJson(res, 400, {
-                    error: error.message
-                });
-
-                return;
-            }
-
-            // ================================
-            // CREATE PROFILE
-            // ================================
-
-            const {
-                error: profileError
-            } =
-                await supabase
-                    .from('profiles')
-                    .insert({
-
-                        id:
-                            data.user.id,
-
-                        full_name:
-                            name,
-
-                        remaining_seconds:
-                            0
-                    });
-
-            if (profileError) {
-
-                sendJson(res, 500, {
-                    error:
-                        profileError.message
-                });
-
-                return;
-            }
-
-            sendJson(res, 200, {
-                success: true
-            });
-
-            return;
-        }
-
-        // ====================================
-        // LOGIN
-        // ====================================
-
-        if (type === 'login') {
-
-            const {
-                data,
-                error
-            } =
-                await supabase
-                    .auth
+                await supabase.auth
                     .signInWithPassword({
 
                         email,
@@ -176,56 +65,47 @@ export default async function handler(
 
             if (
                 error ||
-                !data.session
+                !data?.session
             ) {
-
-                sendJson(res, 401, {
-                    error: 'Invalid login'
-                });
-
-                return;
+                return fail(
+                    res,
+                    401,
+                    'Invalid credentials'
+                );
             }
+
+            // ====================================
+            // USER PROFILE
+            // ====================================
 
             const user =
                 data.user;
 
-            // ================================
-            // GET PROFILE
-            // ================================
-
             const {
                 data: profile,
                 error: profileError
-            } =
-                await supabase
-                    .from('profiles')
-                    .select(`
-                        full_name,
-                        remaining_seconds
-                    `)
-                    .eq('id', user.id)
-                    .single();
+            } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', user.id)
+                .single();
 
             if (
                 profileError ||
                 !profile
             ) {
-
-                sendJson(res, 404, {
-                    error:
-                        'Profile not found'
-                });
-
-                return;
+                return fail(
+                    res,
+                    500,
+                    'Profile not found'
+                );
             }
 
-            // ================================
+            // ====================================
             // RESPONSE
-            // ================================
+            // ====================================
 
-            sendJson(res, 200, {
-
-                success: true,
+            return ok(res, {
 
                 token:
                     data.session.access_token,
@@ -233,37 +113,28 @@ export default async function handler(
                 profile: {
 
                     id:
-                        user.id,
+                        profile.id,
 
                     name:
-                        profile.full_name || '',
+                        profile.name,
 
                     seconds:
-                        profile.remaining_seconds || 0
+                        profile.remaining_seconds
                 }
             });
 
-            return;
+        } catch (err) {
+
+            return fail(
+                res,
+                500,
+                err.message
+            );
         }
+    });
 
-        // ====================================
-        // INVALID TYPE
-        // ====================================
+// ========================================
+// EXPORT
+// ========================================
 
-        sendJson(res, 400, {
-            error: 'Invalid auth type'
-        });
-
-    }
-    catch (err) {
-
-        console.error(
-            'AUTH ERROR:',
-            err
-        );
-
-        sendJson(res, 500, {
-            error: err.message
-        });
-    }
-}
+export default router;
