@@ -3,47 +3,35 @@ import express from "express";
 const app = express();
 app.use(express.json());
 
-// =========================
-// START SESSION ROUTE
-// =========================
-app.post("/api/start-session", async (req, res) => {
-    try {
-        const { token } = req.body;
-
-        if (!token) {
-            return res.json({
-                success: false,
-                error: "missing token"
-            });
-        }
-
-        // TEMP MOCK (replace with Supabase later)
-        return res.json({
-            success: true,
-            token: token,
-            sessionId: "temp-session-123"
-        });
-
-    } catch (e) {
-        return res.json({
-            success: false,
-            error: e.message
-        });
-    }
+// TEST ROUTE (IMPORTANT)
+app.get("/", (req, res) => {
+    res.send("Origin Server Alive");
 });
 
-// =========================
-// END SESSION ROUTE
-// =========================
-app.post("/api/end-session", async (req, res) => {
+// START SESSION
+app.post("/api/start-session", (req, res) => {
+    const { token } = req.body;
+
+    console.log("START SESSION HIT:", token);
+
     return res.json({
         success: true,
-        remaining_seconds: 100,
+        token,
+        sessionId: "session_" + Date.now()
+    });
+});
+
+// END SESSION
+app.post("/api/end-session", (req, res) => {
+    return res.json({
+        success: true,
+        remaining_seconds: 120,
         used_seconds: 0
     });
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
-    console.log("🚀 Origin Server running on port 3000");
+    console.log("🚀 Server running on", PORT);
 });
