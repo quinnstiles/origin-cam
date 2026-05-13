@@ -1,70 +1,39 @@
-import express from "express";
-import { supabase } from "../lib/supabase.js";
-import { createSession } from "../lib/sessions.js";
-import crypto from "crypto";
+import express from 'express';
 
 const router = express.Router();
 
-const GRACE_TIME_SECONDS = 10;
+// ========================================
+// START SESSION
+// ========================================
 
-router.post("/", async (req, res) => {
+router.post('/', async (req, res) => {
 
     try {
 
         const { token } = req.body;
 
         if (!token) {
-            return res.json({ success: false });
+
+            return res.status(401).json({
+                success: false,
+                message: 'Missing token'
+            });
         }
-
-        // =====================================
-        // VERIFY USER (Supabase JWT)
-        // =====================================
-
-        const { data, error } =
-            await supabase.auth.getUser(token);
-
-        if (error || !data?.user) {
-            return res.json({ success: false });
-        }
-
-        const user = data.user;
-
-        // =====================================
-        // GENERATE SERVER SESSION ID
-        // =====================================
-
-        const sessionId = crypto.randomUUID();
-
-        // =====================================
-        // CREATE SERVER SESSION
-        // =====================================
-
-        createSession(sessionId, {
-            userId: user.id
-        });
-
-        // =====================================
-        // RETURN SESSION TO CLIENT
-        // =====================================
 
         return res.json({
-
             success: true,
 
-            sessionId,
+            token,
 
-            grace_time: GRACE_TIME_SECONDS,
-
-            message: "session started"
+            sessionId:
+                `session_${Date.now()}`
         });
 
     } catch (err) {
 
-        console.log("START SESSION ERROR:", err);
-
-        return res.json({
-            success: false
+        return res.status(500).json({
+            success: false,
+            message: err.message
         });
     }
 });
