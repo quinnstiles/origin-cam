@@ -1,191 +1,31 @@
-// ========================================
-// IMPORTS
-// ========================================
+import "dotenv/config";
+import { createSession } from "../lib/session-store.js";
+import { now } from "../lib/time.js";
 
-import express from 'express';
+export default function handler(req, res) {
+    const { userId } = req.body;
 
-import supabase
-    from '../lib/supabase.js';
+    if (!userId) {
+        return res.status(400).json({ error: "missing userId" });
+    }
 
-import {
-    authMiddleware
-} from '../middleware/auth-middleware.js';
+    const grace = Number(process.env.GRACE_TIME || 10);
 
-import {
-    createDecartSession
-} from '../lib/decart.js';
+    const session = {
+        userId,
+        startTime: now(),
+        lastBeat: now(),
+        totalTime: 30, // replace with DB later
+        graceTime: grace,
+        usedTime: 0,
+        active: true
+    };
 
-import {
-    createSession
-} from '../lib/session-store.js';
+    createSession(userId, session);
 
-import {
-    nowSeconds
-} from '../lib/time.js';
-
-import {
-    ok,
-    fail
-} from '../utils/response.js';
-
-// ========================================
-// ROUTER
-// ========================================
-
-const router =
-    express.Router();
-
-// ========================================
-// CONFIG
-// ========================================
-
-const GRACE_SECONDS = 10;
-
-// ========================================
-// START SESSION
-// ========================================
-
-router.post(
-    '/',
-    authMiddleware,
-    async (req, res) => {
-        try {
-
-            const user =
-                req.user;
-
-            // ====================================
-            // GET PROFILE
-            // ====================================
-
-            const {
-                data: profile,
-                error
-            } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', user.id)
-                .single();
-
-            if (
-                error ||
-                !profile
-            ) {
-                return fail(
-                    res,
-                    404,
-                    'Profile not found'
-                );
-            }
-
-            // ====================================
-            // CHECK TIME
-            // ====================================
-
-            const remaining =
-                profile.remaining_seconds || 0;
-
-            if (remaining <= 0) {
-
-                return fail(
-                    res,
-                    403,
-                    'No remaining time'
-                );
-            }
-
-            // ====================================
-            // TOTAL SESSION
-            // ====================================
-
-            const totalSeconds =
-                remaining +
-                GRACE_SECONDS;
-
-            // ====================================
-            // CREATE DECart SESSION
-            // ====================================
-
-            const decart =
-                await createDecartSession({
-
-                    durationSeconds:
-                        totalSeconds,
-
-                    userId:
-                        user.id
-                });
-
-            if (!decart.success) {
-
-                return fail(
-                    res,
-                    500,
-                    decart.error
-                );
-            }
-
-            // ====================================
-            // STORE MEMORY SESSION
-            // ====================================
-
-            createSession(
-
-                decart.sessionId,
-
-                {
-                    userId:
-                        user.id,
-
-                    startedAt:
-                        nowSeconds(),
-
-                    lastHeartbeat:
-                        nowSeconds(),
-
-                    totalSeconds,
-
-                    graceSeconds:
-                        GRACE_SECONDS,
-
-                    originalSeconds:
-                        remaining,
-
-                    decartSessionId:
-                        decart.sessionId
-                }
-            );
-
-            // ====================================
-            // RESPONSE
-            // ====================================
-
-            return ok(res, {
-
-                sessionId:
-                    decart.sessionId,
-
-                clientToken:
-                    decart.clientToken,
-
-                totalSeconds,
-
-                remainingSeconds:
-                    remaining
-            });
-
-        } catch (err) {
-
-            return fail(
-                res,
-                500,
-                err.message
-            );
-        }
+    return res.json({
+        success: true,
+        sessionId: userId,
+        totalTime: session.totalTime
     });
-
-// ========================================
-// EXPORT
-// ========================================
-
-export default router;
+}

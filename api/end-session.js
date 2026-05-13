@@ -1,103 +1,23 @@
-// ========================================
-// IMPORTS
-// ========================================
+import { getSession, deleteSession } from "../lib/session-store.js";
+import { calculateUsedTime, calculateRemaining } from "../lib/billing.js";
 
-import express from 'express';
+export default function handler(req, res) {
+    const { userId } = req.body;
 
-import {
-    authMiddleware
-} from '../middleware/auth-middleware.js';
+    const session = getSession(userId);
 
-import {
-    finalizeSession
-} from '../lib/billing.js';
+    if (!session) {
+        return res.status(404).json({ error: "session not found" });
+    }
 
-import {
-    ok,
-    fail
-} from '../utils/response.js';
+    const used = calculateUsedTime(session);
+    const remaining = calculateRemaining(session);
 
-// ========================================
-// ROUTER
-// ========================================
+    deleteSession(userId);
 
-const router =
-    express.Router();
-
-// ========================================
-// END SESSION
-// ========================================
-
-router.post(
-    '/',
-    authMiddleware,
-    async (req, res) => {
-        try {
-
-            const {
-                sessionId
-            } = req.body;
-
-            // ====================================
-            // VALIDATION
-            // ====================================
-
-            if (!sessionId) {
-
-                return fail(
-                    res,
-                    400,
-                    'Missing sessionId'
-                );
-            }
-
-            // ====================================
-            // FINALIZE
-            // ====================================
-
-            const result =
-                await finalizeSession({
-
-                    sessionId,
-
-                    reason:
-                        'manual_stop'
-                });
-
-            if (!result.success) {
-
-                return fail(
-                    res,
-                    500,
-                    result.error
-                );
-            }
-
-            // ====================================
-            // RESPONSE
-            // ====================================
-
-            return ok(res, {
-
-                usedSeconds:
-                    result.usedSeconds,
-
-                remainingSeconds:
-                    result.remainingSeconds
-            });
-
-        } catch (err) {
-
-            return fail(
-                res,
-                500,
-                err.message
-            );
-        }
+    return res.json({
+        success: true,
+        used_seconds: used,
+        remaining_seconds: remaining
     });
-
-// ========================================
-// EXPORT
-// ========================================
-
-export default router;
+}

@@ -1,105 +1,18 @@
-// ========================================
-// IMPORTS
-// ========================================
+import { getSession, updateSession } from "../lib/session-store.js";
+import { now } from "../lib/time.js";
 
-import express from 'express';
+export default function handler(req, res) {
+    const { userId } = req.body;
 
-import {
-    authMiddleware
-} from '../middleware/auth-middleware.js';
+    const session = getSession(userId);
 
-import {
-    getSession
-} from '../lib/session-store.js';
+    if (!session) {
+        return res.status(404).json({ error: "session not found" });
+    }
 
-import {
-    now
-} from '../lib/time.js';
+    session.lastBeat = now();
 
-import {
-    ok,
-    fail
-} from '../utils/response.js';
+    updateSession(userId, session);
 
-// ========================================
-// ROUTER
-// ========================================
-
-const router =
-    express.Router();
-
-// ========================================
-// HEARTBEAT
-// ========================================
-
-router.post(
-    '/',
-    authMiddleware,
-    async (req, res) => {
-        try {
-
-            const {
-                sessionId
-            } = req.body;
-
-            // ====================================
-            // VALIDATION
-            // ====================================
-
-            if (!sessionId) {
-
-                return fail(
-                    res,
-                    400,
-                    'Missing sessionId'
-                );
-            }
-
-            // ====================================
-            // GET SESSION
-            // ====================================
-
-            const session =
-                getSession(
-                    sessionId
-                );
-
-            if (!session) {
-
-                return fail(
-                    res,
-                    404,
-                    'Session not found'
-                );
-            }
-
-            // ====================================
-            // UPDATE HEARTBEAT
-            // ====================================
-
-            session.lastHeartbeat =
-                now();
-
-            // ====================================
-            // RESPONSE
-            // ====================================
-
-            return ok(res, {
-                alive: true
-            });
-
-        } catch (err) {
-
-            return fail(
-                res,
-                500,
-                err.message
-            );
-        }
-    });
-
-// ========================================
-// EXPORT
-// ========================================
-
-export default router;
+    return res.json({ ok: true });
+}
