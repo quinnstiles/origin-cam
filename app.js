@@ -1,37 +1,49 @@
-import express from "express";
+import 'dotenv/config';
+
+import express from 'express';
+import cors from 'cors';
+
+import authRoute from './api/auth.js';
 
 const app = express();
-app.use(express.json());
 
-// TEST ROUTE (IMPORTANT)
-app.get("/", (req, res) => {
-    res.send("Origin Server Alive");
-});
+// =====================================================
+// MIDDLEWARE
+// =====================================================
 
-// START SESSION
-app.post("/api/start-session", (req, res) => {
-    const { token } = req.body;
+app.use(cors());
 
-    console.log("START SESSION HIT:", token);
+app.use(express.json({
+    limit: '10mb'
+}));
 
-    return res.json({
+// =====================================================
+// ROUTES
+// =====================================================
+
+app.use('/api/auth', authRoute);
+
+// =====================================================
+// HEALTH
+// =====================================================
+
+app.get('/', (req, res) => {
+
+    res.json({
         success: true,
-        token,
-        sessionId: "session_" + Date.now()
+        message: 'Origin Server Online'
     });
 });
 
-// END SESSION
-app.post("/api/end-session", (req, res) => {
-    return res.json({
-        success: true,
-        remaining_seconds: 120,
-        used_seconds: 0
-    });
-});
+// =====================================================
+// START
+// =====================================================
 
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 
 app.listen(PORT, () => {
-    console.log("🚀 Server running on", PORT);
+
+    console.log(
+        `🚀 Origin Server running on port ${PORT}`
+    );
 });
