@@ -1,31 +1,72 @@
-import "dotenv/config";
-import { createSession } from "../lib/session-store.js";
-import { now } from "../lib/time.js";
+import express from "express";
+import { supabase } from "../lib/supabase.js";
+import { createSession } from "../lib/sessions.js";
+import crypto from "crypto";
 
-export default function handler(req, res) {
-    const { userId } = req.body;
+const router = express.Router();
 
-    if (!userId) {
-        return res.status(400).json({ error: "missing userId" });
+const GRACE_TIME_SECONDS = 10;
+
+router.post("/", async (req, res) => {
+
+    try {
+
+        const { token } = req.body;
+
+        if (!token) {
+            return res.json({ success: false });
+        }
+
+        // =====================================
+        // VERIFY USER (Supabase JWT)
+        // =====================================
+
+        const { data, error } =
+            await supabase.auth.getUser(token);
+
+        if (error || !data?.user) {
+            return res.json({ success: false });
+        }
+
+        const user = data.user;
+
+        // =====================================
+        // GENERATE SERVER SESSION ID
+        // =====================================
+
+        const sessionId = crypto.randomUUID();
+
+        // =====================================
+        // CREATE SERVER SESSION
+        // =====================================
+
+        createSession(sessionId, {
+            userId: user.id
+        });
+
+        // =====================================
+        // RETURN SESSION TO CLIENT
+        // =====================================
+
+        return res.json({
+
+            success: true,
+
+            sessionId,
+
+            grace_time: GRACE_TIME_SECONDS,
+
+            message: "session started"
+        });
+
+    } catch (err) {
+
+        console.log("START SESSION ERROR:", err);
+
+        return res.json({
+            success: false
+        });
     }
+});
 
-    const grace = Number(process.env.GRACE_TIME || 10);
-
-    const session = {
-        userId,
-        startTime: now(),
-        lastBeat: now(),
-        totalTime: 30, // replace with DB later
-        graceTime: grace,
-        usedTime: 0,
-        active: true
-    };
-
-    createSession(userId, session);
-
-    return res.json({
-        success: true,
-        sessionId: userId,
-        totalTime: session.totalTime
-    });
-}
+export default router;

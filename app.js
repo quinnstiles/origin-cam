@@ -1,49 +1,49 @@
-import 'dotenv/config';
-
-import express from 'express';
-import cors from 'cors';
-
-import authRoute from './api/auth.js';
+import express from "express";
 
 const app = express();
+app.use(express.json());
 
-// =====================================================
-// MIDDLEWARE
-// =====================================================
+// =========================
+// START SESSION ROUTE
+// =========================
+app.post("/api/start-session", async (req, res) => {
+    try {
+        const { token } = req.body;
 
-app.use(cors());
+        if (!token) {
+            return res.json({
+                success: false,
+                error: "missing token"
+            });
+        }
 
-app.use(express.json({
-    limit: '10mb'
-}));
+        // TEMP MOCK (replace with Supabase later)
+        return res.json({
+            success: true,
+            token: token,
+            sessionId: "temp-session-123"
+        });
 
-// =====================================================
-// ROUTES
-// =====================================================
+    } catch (e) {
+        return res.json({
+            success: false,
+            error: e.message
+        });
+    }
+});
 
-app.use('/api/auth', authRoute);
-
-// =====================================================
-// HEALTH
-// =====================================================
-
-app.get('/', (req, res) => {
-
-    res.json({
+// =========================
+// END SESSION ROUTE
+// =========================
+app.post("/api/end-session", async (req, res) => {
+    return res.json({
         success: true,
-        message: 'Origin Server Online'
+        remaining_seconds: 100,
+        used_seconds: 0
     });
 });
 
-// =====================================================
-// START
-// =====================================================
-
 const PORT = 3000;
-
 app.listen(PORT, () => {
-
-    console.log(
-        `🚀 Origin Server running on port ${PORT}`
-    );
+    console.log("🚀 Origin Server running on port 3000");
 });

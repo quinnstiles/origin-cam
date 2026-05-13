@@ -1,18 +1,59 @@
-import { getSession, updateSession } from "../lib/session-store.js";
-import { now } from "../lib/time.js";
+import express from "express";
+import { updateHeartbeat, isAlive, getSession } from "../lib/sessions.js";
 
-export default function handler(req, res) {
-    const { userId } = req.body;
+const router = express.Router();
 
-    const session = getSession(userId);
+router.post("/", async (req, res) => {
 
-    if (!session) {
-        return res.status(404).json({ error: "session not found" });
+    try {
+
+        const { sessionId, token } = req.body;
+
+        if (!sessionId || !token) {
+            return res.json({ success: false });
+        }
+
+        const session = getSession(sessionId);
+
+        if (!session) {
+            return res.json({
+                success: false,
+                reason: "session_not_found"
+            });
+        }
+
+        // =====================================
+        // UPDATE HEARTBEAT TIME
+        // =====================================
+
+        updateHeartbeat(sessionId);
+
+        // =====================================
+        // CHECK IF SESSION IS STILL VALID
+        // =====================================
+
+        const alive = isAlive(sessionId);
+
+        if (!alive) {
+            return res.json({
+                success: false,
+                reason: "session_timeout"
+            });
+        }
+
+        return res.json({
+            success: true,
+            status: "alive"
+        });
+
+    } catch (err) {
+
+        console.log("HEARTBEAT ERROR:", err);
+
+        return res.json({
+            success: false
+        });
     }
+});
 
-    session.lastBeat = now();
-
-    updateSession(userId, session);
-
-    return res.json({ ok: true });
-}
+export default router;
