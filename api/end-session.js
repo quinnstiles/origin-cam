@@ -12,7 +12,11 @@ router.post("/", async (req, res) => {
 
         const { sessionId } = req.body;
 
+        // ========================================
+        // VALIDATION
+        // ========================================
         if (!sessionId) {
+
             return res.status(400).json({
                 success: false,
                 message: "Missing sessionId"
@@ -22,19 +26,48 @@ router.post("/", async (req, res) => {
         // ========================================
         // GET SESSION
         // ========================================
-        const { data: session, error } = await supabase
+        const {
+            data: session,
+            error: sessionError
+        } = await supabase
             .from("sessions")
             .select("*")
             .eq("id", sessionId)
             .single();
 
-        if (error || !session) {
+        if (sessionError || !session) {
 
-            console.log("❌ Session not found");
+            console.log(
+                "❌ Session not found"
+            );
 
             return res.status(404).json({
                 success: false,
                 message: "Session not found"
+            });
+        }
+
+        // ========================================
+        // GET USER PROFILE
+        // ========================================
+        const {
+            data: profile,
+            error: profileError
+        } = await supabase
+            .from("profiles")
+            .select("seconds")
+            .eq("id", session.user_id)
+            .single();
+
+        if (profileError || !profile) {
+
+            console.log(
+                "❌ Profile not found"
+            );
+
+            return res.status(404).json({
+                success: false,
+                message: "Profile not found"
             });
         }
 
@@ -44,7 +77,7 @@ router.post("/", async (req, res) => {
         const debitAmount = 20;
 
         const currentSeconds =
-            session.total_seconds || 0;
+            profile.seconds || 0;
 
         const remainingSeconds =
             Math.max(
@@ -53,14 +86,43 @@ router.post("/", async (req, res) => {
             );
 
         // ========================================
+        // UPDATE USER BALANCE
+        // ========================================
+        const {
+            error: balanceError
+        } = await supabase
+            .from("profiles")
+            .update({
+                seconds: remainingSeconds
+            })
+            .eq("id", session.user_id);
+
+        if (balanceError) {
+
+            console.log(
+                "❌ Balance update failed:",
+                balanceError.message
+            );
+
+            return res.status(500).json({
+                success: false,
+                message: "Balance update failed"
+            });
+        }
+
+        // ========================================
         // UPDATE SESSION
         // ========================================
-        const { error: updateError } = await supabase
+        const {
+            error: updateError
+        } = await supabase
             .from("sessions")
             .update({
                 used_seconds: debitAmount,
-                remaining_seconds_after: remainingSeconds,
-                ended_at: new Date().toISOString(),
+                remaining_seconds_after:
+                    remainingSeconds,
+                ended_at:
+                    new Date().toISOString(),
                 status: "ended",
                 end_reason: "manual"
             })
@@ -69,21 +131,27 @@ router.post("/", async (req, res) => {
         if (updateError) {
 
             console.log(
-                "❌ DB update error:",
+                "❌ Session update failed:",
                 updateError.message
             );
 
             return res.status(500).json({
                 success: false,
-                message: "DB update failed"
+                message: "Session update failed"
             });
         }
 
-        console.log("💰 SESSION DEBITED:", {
-            sessionId,
-            debitAmount,
-            remainingSeconds
-        });
+        // ========================================
+        // SUCCESS
+        // ========================================
+        console.log(
+            "💰 SESSION DEBITED:",
+            {
+                sessionId,
+                debitAmount,
+                remainingSeconds
+            }
+        );
 
         return res.json({
             success: true,
