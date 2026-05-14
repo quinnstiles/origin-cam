@@ -1,14 +1,11 @@
 import express from 'express';
-
-import {
-    getSession,
-    removeSession
-} from '../lib/sessionStore.js';
+import { getSession, removeSession } from '../lib/sessionStore.js';
+import { endSession as finalizeBilling } from '../lib/billing.js';
 
 const router = express.Router();
 
 // ========================================
-// END SESSION
+// END SESSION (MANUAL OR HEARTBEAT CLOSE)
 // ========================================
 
 router.post('/', async (req, res) => {
@@ -18,7 +15,6 @@ router.post('/', async (req, res) => {
         const { sessionId } = req.body;
 
         if (!sessionId) {
-
             return res.status(400).json({
                 success: false,
                 message: 'Missing sessionId'
@@ -26,92 +22,62 @@ router.post('/', async (req, res) => {
         }
 
         // ====================================
-        // GET SESSION
+        // GET SESSION (AUTHORITATIVE)
         // ====================================
-
-        const session =
-            getSession(sessionId);
+        const session = getSession(sessionId);
 
         if (!session) {
-
             return res.status(404).json({
                 success: false,
-                message: 'Session not found'
+                message: 'Session not found or already closed'
             });
         }
 
         // ====================================
-        // TIME USED
+        // PREVENT DOUBLE ENDING
         // ====================================
-
-        const now =
-            Date.now();
-
-        const secondsUsed =
-            Math.floor(
-                (now - session.startedAt) / 1000
-            );
-
-        // ====================================
-        // REMAINING TIME
-        // ====================================
-
-        let remainingSeconds =
-            session.sessionDuration -
-            secondsUsed;
-
-        // ====================================
-        // REMOVE GRACE TIME
-        // ====================================
-
-        if (
-            remainingSeconds >
-            session.dbSeconds
-        ) {
-            remainingSeconds =
-                session.dbSeconds;
+        if (session.ended) {
+            return res.json({
+                success: true,
+                message: 'Already ended',
+                remainingSeconds: session.remainingSeconds || 0
+            });
         }
 
-        if (remainingSeconds < 0) {
-            remainingSeconds = 0;
-        }
+        // mark as ended immediately (prevents race condition)
+        session.ended = true;
+        session.active = false;
 
         // ====================================
-        // TODO:
-        // UPDATE SUPABASE HERE
+        // STOP HEARTBEAT TIMER SAFELY
         // ====================================
-
-        console.log(
-            'SESSION ENDED:',
-            {
-                sessionId,
-                userId: session.userId,
-                secondsUsed,
-                remainingSeconds
-            }
-        );
+        session.lastHeartbeat = Date.now();
 
         // ====================================
-        // CLEANUP
+        // CALL BILLING ENGINE (SERVER AUTHORITY)
         // ====================================
+        const result = await finalizeBilling(sessionId, {
+            reason: 'manual_end'
+        });
 
+        // ====================================
+        // CLEAN MEMORY SESSION
+        // ====================================
         removeSession(sessionId);
 
         // ====================================
         // RESPONSE
         // ====================================
-
         return res.json({
             success: true,
-            remainingSeconds
+            sessionId,
+            billedSeconds: result?.billed_seconds || 0,
+            remainingSeconds: 0
         });
 
     } catch (err) {
 
-        console.log(
-            'END SESSION ERROR:',
-            err.message
-        );
+        console.log('END SESSION ERROR:', err.message);
 
         return res.status(500).json({
             success: false,
