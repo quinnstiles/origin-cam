@@ -5,42 +5,48 @@ const router = express.Router();
 
 router.post("/", async (req, res) => {
     try {
-        // ================================
-        // HARD CODE TEST USER
-        // ================================
-        const userId = "47db905a-6207-4b7c-bd4e-84842e000477";
+        const { userId } = req.body;
+
+        // ====================================
+        // VALIDATION
+        // ====================================
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing userId"
+            });
+        }
+
         const debitAmount = 20;
 
-        // ================================
-        // GET USER FIRST (VERIFY EXISTS)
-        // ================================
-        const { data: user, error: getError } = await supabase
+        // ====================================
+        // GET USER
+        // ====================================
+        const { data: user, error: fetchError } = await supabase
             .from("users")
             .select("remaining_seconds")
             .eq("id", userId)
             .single();
 
-        if (getError || !user) {
-            console.log("❌ USER NOT FOUND:", getError?.message);
+        if (fetchError || !user) {
+            console.log("❌ USER NOT FOUND:", fetchError?.message);
+
             return res.status(404).json({
                 success: false,
                 message: "User not found"
             });
         }
 
-        // ================================
-        // CALCULATE NEW VALUE
-        // ================================
-        const current = user.remaining_seconds || 0;
-        const updated = Math.max(0, current - debitAmount);
+        const before = user.remaining_seconds || 0;
+        const after = Math.max(0, before - debitAmount);
 
-        // ================================
-        // UPDATE USER
-        // ================================
-        const { data: updateData, error: updateError } = await supabase
+        // ====================================
+        // UPDATE USER (DEBIT)
+        // ====================================
+        const { data: updated, error: updateError } = await supabase
             .from("users")
             .update({
-                remaining_seconds: updated,
+                remaining_seconds: after,
                 updated_at: new Date().toISOString()
             })
             .eq("id", userId)
@@ -56,24 +62,23 @@ router.post("/", async (req, res) => {
             });
         }
 
-        console.log("💰 DEBIT SUCCESS:", {
+        console.log("💰 END SESSION DEBIT SUCCESS:", {
             userId,
-            before: current,
+            before,
             debited: debitAmount,
-            after: updated
+            after
         });
 
         return res.json({
             success: true,
             userId,
-            before: current,
+            before,
             debited: debitAmount,
-            after: updated,
-            db: updateData
+            after
         });
 
     } catch (err) {
-        console.log("❌ SERVER ERROR:", err.message);
+        console.log("❌ END SESSION ERROR:", err.message);
 
         return res.status(500).json({
             success: false,
