@@ -1,10 +1,11 @@
 import express from "express";
 import { supabase } from "../lib/supabase.js";
-import { getSession } from "../lib/sessionStore.js";
-import { endSession as finalizeBilling } from "../lib/billing.js";
 
 const router = express.Router();
 
+// ========================================
+// END SESSION
+// ========================================
 router.post("/", async (req, res) => {
 
     try {
@@ -19,46 +20,84 @@ router.post("/", async (req, res) => {
         }
 
         // ========================================
-        // 1. GET MEMORY SESSION (SOURCE OF TRUTH)
+        // GET SESSION
         // ========================================
-        const memorySession = getSession(sessionId);
+        const { data: session, error } = await supabase
+            .from("sessions")
+            .select("*")
+            .eq("id", sessionId)
+            .single();
 
-        if (!memorySession) {
+        if (error || !session) {
+
+            console.log("❌ Session not found");
+
             return res.status(404).json({
                 success: false,
-                message: "Session not active in server memory"
+                message: "Session not found"
             });
         }
 
         // ========================================
-        // 2. FINALIZE BILLING (SERVER TRUTH)
+        // FIXED BILLING
         // ========================================
-        const result = await finalizeBilling(sessionId, {
-            reason: "manual_end"
-        });
+        const debitAmount = 20;
 
-        if (!result) {
+        const currentSeconds =
+            session.total_seconds || 0;
+
+        const remainingSeconds =
+            Math.max(
+                0,
+                currentSeconds - debitAmount
+            );
+
+        // ========================================
+        // UPDATE SESSION
+        // ========================================
+        const { error: updateError } = await supabase
+            .from("sessions")
+            .update({
+                used_seconds: debitAmount,
+                remaining_seconds_after: remainingSeconds,
+                ended_at: new Date().toISOString(),
+                status: "ended",
+                end_reason: "manual"
+            })
+            .eq("id", sessionId);
+
+        if (updateError) {
+
+            console.log(
+                "❌ DB update error:",
+                updateError.message
+            );
+
             return res.status(500).json({
                 success: false,
-                message: "Billing failed"
+                message: "DB update failed"
             });
         }
 
-        // ========================================
-        // 3. CLEAN MEMORY SESSION
-        // ========================================
-        memorySession.ended = true;
+        console.log("💰 SESSION DEBITED:", {
+            sessionId,
+            debitAmount,
+            remainingSeconds
+        });
 
         return res.json({
             success: true,
             sessionId,
-            billedSeconds: result.billed_seconds,
-            status: result.status
+            debited: debitAmount,
+            remainingSeconds
         });
 
     } catch (err) {
 
-        console.log("END SESSION ERROR:", err.message);
+        console.log(
+            "❌ END SESSION ERROR:",
+            err.message
+        );
 
         return res.status(500).json({
             success: false,
