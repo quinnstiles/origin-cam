@@ -3,20 +3,13 @@ import { supabase } from "../lib/supabase.js";
 
 const router = express.Router();
 
-// ========================================
-// END SESSION
-// ========================================
 router.post("/", async (req, res) => {
 
     try {
 
         const { sessionId } = req.body;
 
-        // ========================================
-        // VALIDATION
-        // ========================================
         if (!sessionId) {
-
             return res.status(400).json({
                 success: false,
                 message: "Missing sessionId"
@@ -26,21 +19,13 @@ router.post("/", async (req, res) => {
         // ========================================
         // GET SESSION
         // ========================================
-        const {
-            data: session,
-            error: sessionError
-        } = await supabase
+        const { data: session, error } = await supabase
             .from("sessions")
             .select("*")
             .eq("id", sessionId)
             .single();
 
-        if (sessionError || !session) {
-
-            console.log(
-                "❌ Session not found"
-            );
-
+        if (error || !session) {
             return res.status(404).json({
                 success: false,
                 message: "Session not found"
@@ -48,124 +33,73 @@ router.post("/", async (req, res) => {
         }
 
         // ========================================
-        // GET USER PROFILE
+        // GET USER (IMPORTANT FIX HERE)
         // ========================================
-        const {
-            data: profile,
-            error: profileError
-        } = await supabase
-            .from("profiles")
-            .select("seconds")
+        const { data: user, error: userError } = await supabase
+            .from("users")
+            .select("remaining_seconds")
             .eq("id", session.user_id)
             .single();
 
-        if (profileError || !profile) {
-
-            console.log(
-                "❌ Profile not found"
-            );
-
+        if (userError || !user) {
             return res.status(404).json({
                 success: false,
-                message: "Profile not found"
+                message: "User not found"
             });
         }
 
         // ========================================
-        // FIXED BILLING
+        // SIMPLE DEDUCT 20
         // ========================================
         const debitAmount = 20;
 
-        const currentSeconds =
-            profile.seconds || 0;
-
         const remainingSeconds =
-            Math.max(
-                0,
-                currentSeconds - debitAmount
-            );
+            Math.max(0, user.remaining_seconds - debitAmount);
 
         // ========================================
-        // UPDATE USER BALANCE
+        // UPDATE USERS TABLE (REAL BILLING)
         // ========================================
-        const {
-            error: balanceError
-        } = await supabase
-            .from("profiles")
+        const { error: updateError } = await supabase
+            .from("users")
             .update({
-                seconds: remainingSeconds
+                remaining_seconds: remainingSeconds
             })
             .eq("id", session.user_id);
 
-        if (balanceError) {
-
-            console.log(
-                "❌ Balance update failed:",
-                balanceError.message
-            );
-
+        if (updateError) {
             return res.status(500).json({
                 success: false,
-                message: "Balance update failed"
+                message: "Failed to update user balance"
             });
         }
 
         // ========================================
-        // UPDATE SESSION
+        // UPDATE SESSION (optional tracking)
         // ========================================
-        const {
-            error: updateError
-        } = await supabase
+        await supabase
             .from("sessions")
             .update({
                 used_seconds: debitAmount,
-                remaining_seconds_after:
-                    remainingSeconds,
-                ended_at:
-                    new Date().toISOString(),
                 status: "ended",
-                end_reason: "manual"
+                ended_at: new Date().toISOString()
             })
             .eq("id", sessionId);
 
-        if (updateError) {
-
-            console.log(
-                "❌ Session update failed:",
-                updateError.message
-            );
-
-            return res.status(500).json({
-                success: false,
-                message: "Session update failed"
-            });
-        }
-
-        // ========================================
-        // SUCCESS
-        // ========================================
-        console.log(
-            "💰 SESSION DEBITED:",
-            {
-                sessionId,
-                debitAmount,
-                remainingSeconds
-            }
-        );
+        console.log("💰 DEBIT SUCCESS:", {
+            userId: session.user_id,
+            debited: debitAmount,
+            remainingSeconds
+        });
 
         return res.json({
             success: true,
-            sessionId,
             debited: debitAmount,
             remainingSeconds
         });
 
     } catch (err) {
 
-        console.log(
-            "❌ END SESSION ERROR:",
-            err.message
-        );
+        console.log("END SESSION ERROR:", err.message);
 
         return res.status(500).json({
             success: false,
