@@ -3,114 +3,69 @@ import { createSession } from "../lib/sessionStore.js";
 
 const router = express.Router();
 
-// ========================================
-// START SESSION
-// ========================================
-
 router.post('/', async (req, res) => {
 
     try {
 
         const { token } = req.body;
 
-        // ====================================
-        // VALIDATE LOGIN TOKEN
-        // ====================================
-
         if (!token) {
-
             return res.status(401).json({
                 success: false,
                 message: 'Missing auth token'
             });
         }
 
-        // ====================================
-        // TODO:
-        // VERIFY SUPABASE USER HERE
-        // ====================================
+        const userId = "temporary-user";
 
-        // temporary accepted user
-
-        const userId =
-            'temporary-user';
-
-        // ====================================
-        // TODO:
-        // GET USER DB TIME
-        // ====================================
-
+        // ========================================
+        // DB TIME (seconds from DB)
+        // ========================================
         const dbSeconds = 99999;
 
         if (dbSeconds <= 0) {
-
             return res.status(403).json({
                 success: false,
                 message: 'No remaining time'
             });
         }
 
-        // ====================================
-        // SESSION TIME LOGIC
-        // ====================================
-
+        // ========================================
+        // GRACE TIME (SECONDS → MS LATER)
+        // NOTE: 10 = 10 seconds (NOT ms)
+        // ========================================
         const graceSeconds = 10;
 
-        const sessionDuration =
-            dbSeconds + graceSeconds;
+        const sessionDuration = dbSeconds + graceSeconds;
 
-        // ====================================
-        // CREATE INTERNAL SESSION
-        // ====================================
-
-        const sessionId =
-            `session_${Date.now()}`;
+        const sessionId = `session_${Date.now()}`;
 
         createSession({
             sessionId,
             userId,
-
             dbSeconds,
             graceSeconds,
-
             sessionDuration
         });
-        // ====================================
-        // REAL DECart API KEY
-        // ====================================
 
-        const decartApiKey =
-            process.env.DECART_API_KEY;
+        const decartApiKey = process.env.DECART_API_KEY;
 
         if (!decartApiKey) {
-
             return res.status(500).json({
                 success: false,
                 message: 'Missing DECart API key'
             });
         }
 
-        // ====================================
-        // RESPONSE
-        // ====================================
-
         return res.json({
             success: true,
-
             sessionId,
-
-            decartToken:
-                decartApiKey,
-
+            decartToken: decartApiKey,
             userId
         });
 
     } catch (err) {
-
-        console.log(
-            'START SESSION ERROR:',
-            err.message
-        );
+        console.log('START SESSION ERROR:', err.message);
 
         return res.status(500).json({
             success: false,

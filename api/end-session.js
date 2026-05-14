@@ -1,10 +1,14 @@
 import express from "express";
 import { supabase } from "../lib/supabase.js";
+import { getSession } from "../lib/sessionStore.js";
+import { endSession as finalizeBilling } from "../lib/billing.js";
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
+
     try {
+
         const { sessionId } = req.body;
 
         if (!sessionId) {
@@ -14,60 +18,46 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // 🔥 GET FROM SUPABASE (NOT MEMORY)
-        const { data: session, error } = await supabase
-            .from("sessions")
-            .select("*")
-            .eq("id", sessionId)
-            .single();
+        // ========================================
+        // 1. GET MEMORY SESSION (SOURCE OF TRUTH)
+        // ========================================
+        const memorySession = getSession(sessionId);
 
-        if (error || !session) {
-            console.log("Session not found in DB:", sessionId);
-
+        if (!memorySession) {
             return res.status(404).json({
                 success: false,
-                message: "Session not found"
+                message: "Session not active in server memory"
             });
         }
 
-        const now = Date.now();
-        const started = new Date(session.started_at).getTime();
+        // ========================================
+        // 2. FINALIZE BILLING (SERVER TRUTH)
+        // ========================================
+        const result = await finalizeBilling(sessionId, {
+            reason: "manual_end"
+        });
 
-        const secondsUsed = Math.floor((now - started) / 1000);
-
-        const remainingSeconds = Math.max(
-            0,
-            session.total_seconds - secondsUsed
-        );
-
-        // 🔥 UPDATE DB (THIS IS THE BILLING)
-        const { error: updateError } = await supabase
-            .from("sessions")
-            .update({
-                used_seconds: secondsUsed,
-                remaining_seconds_after: remainingSeconds,
-                ended_at: new Date().toISOString(),
-                status: "ended",
-                end_reason: "manual"
-            })
-            .eq("id", sessionId);
-
-        if (updateError) {
-            console.log("Update error:", updateError.message);
+        if (!result) {
             return res.status(500).json({
                 success: false,
-                message: "DB update failed"
+                message: "Billing failed"
             });
         }
+
+        // ========================================
+        // 3. CLEAN MEMORY SESSION
+        // ========================================
+        memorySession.ended = true;
 
         return res.json({
             success: true,
             sessionId,
-            secondsUsed,
-            remainingSeconds
+            billedSeconds: result.billed_seconds,
+            status: result.status
         });
 
     } catch (err) {
+
         console.log("END SESSION ERROR:", err.message);
 
         return res.status(500).json({
