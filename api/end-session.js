@@ -4,106 +4,81 @@ import { supabase } from "../lib/supabase.js";
 const router = express.Router();
 
 router.post("/", async (req, res) => {
-
     try {
+        // ================================
+        // HARD CODE TEST USER
+        // ================================
+        const userId = "47db905a-6207-4b7c-bd4e-84842e000477";
+        const debitAmount = 20;
 
-        const { sessionId } = req.body;
-
-        if (!sessionId) {
-            return res.status(400).json({
-                success: false,
-                message: "Missing sessionId"
-            });
-        }
-
-        // ========================================
-        // GET SESSION
-        // ========================================
-        const { data: session, error } = await supabase
-            .from("sessions")
-            .select("*")
-            .eq("id", sessionId)
-            .single();
-
-        if (error || !session) {
-            return res.status(404).json({
-                success: false,
-                message: "Session not found"
-            });
-        }
-
-        // ========================================
-        // GET USER (IMPORTANT FIX HERE)
-        // ========================================
-        const { data: user, error: userError } = await supabase
+        // ================================
+        // GET USER FIRST (VERIFY EXISTS)
+        // ================================
+        const { data: user, error: getError } = await supabase
             .from("users")
             .select("remaining_seconds")
-            .eq("id", session.user_id)
+            .eq("id", userId)
             .single();
 
-        if (userError || !user) {
+        if (getError || !user) {
+            console.log("❌ USER NOT FOUND:", getError?.message);
             return res.status(404).json({
                 success: false,
                 message: "User not found"
             });
         }
 
-        // ========================================
-        // SIMPLE DEDUCT 20
-        // ========================================
-        const debitAmount = 20;
+        // ================================
+        // CALCULATE NEW VALUE
+        // ================================
+        const current = user.remaining_seconds || 0;
+        const updated = Math.max(0, current - debitAmount);
 
-        const remainingSeconds =
-            Math.max(0, user.remaining_seconds - debitAmount);
-
-        // ========================================
-        // UPDATE USERS TABLE (REAL BILLING)
-        // ========================================
-        const { error: updateError } = await supabase
+        // ================================
+        // UPDATE USER
+        // ================================
+        const { data: updateData, error: updateError } = await supabase
             .from("users")
             .update({
-                remaining_seconds: remainingSeconds
+                remaining_seconds: updated,
+                updated_at: new Date().toISOString()
             })
-            .eq("id", session.user_id);
+            .eq("id", userId)
+            .select("*");
 
         if (updateError) {
+            console.log("❌ UPDATE FAILED:", updateError.message);
+
             return res.status(500).json({
                 success: false,
-                message: "Failed to update user balance"
+                message: "Update failed",
+                error: updateError.message
             });
         }
 
-        // ========================================
-        // UPDATE SESSION (optional tracking)
-        // ========================================
-        await supabase
-            .from("sessions")
-            .update({
-                used_seconds: debitAmount,
-                status: "ended",
-                ended_at: new Date().toISOString()
-            })
-            .eq("id", sessionId);
-
         console.log("💰 DEBIT SUCCESS:", {
-            userId: session.user_id,
+            userId,
+            before: current,
             debited: debitAmount,
-            remainingSeconds
+            after: updated
         });
 
         return res.json({
             success: true,
+            userId,
+            before: current,
             debited: debitAmount,
-            remainingSeconds
+            after: updated,
+            db: updateData
         });
 
     } catch (err) {
-
-        console.log("END SESSION ERROR:", err.message);
+        console.log("❌ SERVER ERROR:", err.message);
 
         return res.status(500).json({
             success: false,
-            message: "Server error"
+            message: "Server error",
+            error: err.message
         });
     }
 });
