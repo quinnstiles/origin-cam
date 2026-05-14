@@ -1,60 +1,78 @@
-import express from 'express';
-import { supabase } from '../lib/supabase.js';
+import express from "express";
+import { supabase } from "../lib/supabase.js";
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
-
+router.post("/", async (req, res) => {
     try {
-
         const { sessionId } = req.body;
 
         if (!sessionId) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing sessionId'
+                message: "Missing sessionId"
             });
         }
 
-        console.log("🔥 END SESSION TRIGGERED:", sessionId);
+        // 🔥 GET FROM SUPABASE (NOT MEMORY)
+        const { data: session, error } = await supabase
+            .from("sessions")
+            .select("*")
+            .eq("id", sessionId)
+            .single();
 
-        // ====================================
-        // HARD TEST UPDATE (NO LOGIC)
-        // ====================================
-        const { data, error } = await supabase
-            .from('sessions')
+        if (error || !session) {
+            console.log("Session not found in DB:", sessionId);
+
+            return res.status(404).json({
+                success: false,
+                message: "Session not found"
+            });
+        }
+
+        const now = Date.now();
+        const started = new Date(session.started_at).getTime();
+
+        const secondsUsed = Math.floor((now - started) / 1000);
+
+        const remainingSeconds = Math.max(
+            0,
+            session.total_seconds - secondsUsed
+        );
+
+        // 🔥 UPDATE DB (THIS IS THE BILLING)
+        const { error: updateError } = await supabase
+            .from("sessions")
             .update({
-                billed_seconds: 20,
-                ended_at: Date.now(),
-                status: 'closed'
+                used_seconds: secondsUsed,
+                remaining_seconds_after: remainingSeconds,
+                ended_at: new Date().toISOString(),
+                status: "ended",
+                end_reason: "manual"
             })
-            .eq('id', sessionId)
-            .select();
+            .eq("id", sessionId);
 
-        if (error) {
-            console.log("❌ SUPABASE UPDATE FAILED:", error.message);
-
+        if (updateError) {
+            console.log("Update error:", updateError.message);
             return res.status(500).json({
                 success: false,
-                message: error.message
+                message: "DB update failed"
             });
         }
-
-        console.log("✅ DB UPDATED SUCCESSFULLY:", data);
 
         return res.json({
             success: true,
-            billedSeconds: 20,
-            sessionId
+            sessionId,
+            secondsUsed,
+            remainingSeconds
         });
 
     } catch (err) {
-
         console.log("END SESSION ERROR:", err.message);
 
         return res.status(500).json({
             success: false,
-            message: 'Server error'
+            message: "Server error"
         });
     }
 });
