@@ -1,13 +1,14 @@
 import express from 'express';
 import { getSession, removeSession } from '../lib/sessionStore.js';
-import { endSession as finalizeBilling } from '../lib/billing.js';
+import { supabase } from '../lib/supabase.js';
 
 const router = express.Router();
 
-// ========================================
-// END SESSION (MANUAL OR HEARTBEAT CLOSE)
-// ========================================
+const GRACE_MS = Number(process.env.GRACE_TIME || 10000);
 
+// ========================================
+// END SESSION (STRICT BILLING)
+// ========================================
 router.post('/', async (req, res) => {
 
     try {
@@ -22,57 +23,93 @@ router.post('/', async (req, res) => {
         }
 
         // ====================================
-        // GET SESSION (AUTHORITATIVE)
+        // GET SESSION (SERVER MEMORY STATE)
         // ====================================
         const session = getSession(sessionId);
 
         if (!session) {
             return res.status(404).json({
                 success: false,
-                message: 'Session not found or already closed'
+                message: 'Session not found'
             });
         }
 
+        const now = Date.now();
+
         // ====================================
-        // PREVENT DOUBLE ENDING
+        // TIME SPENT
         // ====================================
-        if (session.ended) {
-            return res.json({
-                success: true,
-                message: 'Already ended',
-                remainingSeconds: session.remainingSeconds || 0
-            });
+        const timeSpentMs = now - session.startedAt;
+
+        const timeSpentSec = Math.floor(timeSpentMs / 1000);
+
+        // ====================================
+        // TOTAL AVAILABLE TIME
+        // ====================================
+        const totalAvailableSec =
+            session.dbSeconds + Math.floor(GRACE_MS / 1000);
+
+        // ====================================
+        // REMAINING TIME (STRICT)
+        // ====================================
+        let remainingSeconds =
+            totalAvailableSec - timeSpentSec;
+
+        // ====================================
+        // SAFETY CLAMPS (NO FREE MONEY)
+        // ====================================
+        if (remainingSeconds > session.dbSeconds) {
+            remainingSeconds = session.dbSeconds;
         }
 
-        // mark as ended immediately (prevents race condition)
-        session.ended = true;
-        session.active = false;
+        if (remainingSeconds < 0) {
+            remainingSeconds = 0;
+        }
 
         // ====================================
-        // STOP HEARTBEAT TIMER SAFELY
+        // FINAL BILL = USED TIME
         // ====================================
-        session.lastHeartbeat = Date.now();
+        const billedSeconds =
+            session.dbSeconds - remainingSeconds;
 
-        // ====================================
-        // CALL BILLING ENGINE (SERVER AUTHORITY)
-        // ====================================
-        const result = await finalizeBilling(sessionId, {
-            reason: 'manual_end'
+        console.log("💰 STRICT BILL:", {
+            sessionId,
+            timeSpentSec,
+            remainingSeconds,
+            billedSeconds
         });
 
         // ====================================
-        // CLEAN MEMORY SESSION
+        // UPDATE SUPABASE
+        // ====================================
+        const { error } = await supabase
+            .from('sessions')
+            .update({
+                ended_at: now,
+                remaining_seconds: remainingSeconds,
+                billed_seconds: billedSeconds,
+                status: 'closed',
+                close_reason: 'manual_end'
+            })
+            .eq('id', sessionId);
+
+        if (error) {
+            console.log("DB error:", error.message);
+        }
+
+        // ====================================
+        // CLEAN MEMORY
         // ====================================
         removeSession(sessionId);
 
         // ====================================
-        // RESPONSE
+        // RESPONSE TO CLIENT
         // ====================================
         return res.json({
             success: true,
             sessionId,
-            billedSeconds: result?.billed_seconds || 0,
-            remainingSeconds: 0
+            remainingSeconds,
+            billedSeconds
         });
 
     } catch (err) {

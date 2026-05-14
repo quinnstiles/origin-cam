@@ -8,7 +8,7 @@ import startSessionRoute from './api/start-session.js';
 import endSessionRoute from './api/end-session.js';
 import heartbeatRoute from './api/heartbeat.js';
 
-import { startBillingWatcher } from './lib/billing.js';
+// import { startBillingWatcher } from './lib/billing.js';
 
 // ========================================
 // APP
@@ -66,7 +66,7 @@ app.get('/', (req, res) => {
 // BILLING WATCHER
 // ========================================
 
-startBillingWatcher();
+// startBillingWatcher();
 
 // ========================================
 // START SERVER
