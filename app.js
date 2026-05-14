@@ -9,6 +9,12 @@ import endSessionRoute from './api/end-session.js';
 
 import { startBillingWatcher } from './lib/billing.js';
 
+
+import {
+    sessions,
+    removeSession
+} from "./lib/sessionStore.js";
+
 const app = express();
 
 // ========================================
@@ -42,6 +48,66 @@ app.get('/', (req, res) => {
 // (CRITICAL ADDITION)
 // ========================================
 startBillingWatcher();
+
+
+setInterval(async () => {
+
+    const now = Date.now();
+
+    for (const [sessionId, session] of sessions.entries()) {
+
+        if (!session.active)
+            continue;
+
+        // ====================================
+        // HEARTBEAT LOST
+        // ====================================
+
+        const heartbeatDiff =
+            now - session.lastHeartbeat;
+
+        if (heartbeatDiff > 15000) {
+
+            console.log(
+                "💀 Heartbeat lost:",
+                sessionId
+            );
+
+            await finalizeSession(
+                sessionId,
+                false
+            );
+
+            continue;
+        }
+
+        // ====================================
+        // FULL SESSION TIME REACHED
+        // ====================================
+
+        const elapsed =
+            Math.floor(
+                (now - session.startTime) / 1000
+            );
+
+        if (
+            elapsed >= session.fullDuration
+        ) {
+
+            console.log(
+                "⏱ Session fully consumed:",
+                sessionId
+            );
+
+            await finalizeSession(
+                sessionId,
+                true
+            );
+        }
+
+    }
+
+}, 1000);
 
 // ========================================
 // START SERVER

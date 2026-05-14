@@ -1,4 +1,5 @@
 import express from 'express';
+import { createSession } from "../lib/sessionStore.js";
 
 const router = express.Router();
 
@@ -36,12 +37,12 @@ router.post('/', async (req, res) => {
 
         // ====================================
         // TODO:
-        // CHECK REMAINING SECONDS
+        // GET USER DB TIME
         // ====================================
 
-        const remainingSeconds = 99999;
+        const dbSeconds = 99999;
 
-        if (remainingSeconds <= 0) {
+        if (dbSeconds <= 0) {
 
             return res.status(403).json({
                 success: false,
@@ -50,12 +51,30 @@ router.post('/', async (req, res) => {
         }
 
         // ====================================
+        // SESSION TIME LOGIC
+        // ====================================
+
+        const graceSeconds = 10;
+
+        const sessionDuration =
+            dbSeconds + graceSeconds;
+
+        // ====================================
         // CREATE INTERNAL SESSION
         // ====================================
 
         const sessionId =
             `session_${Date.now()}`;
 
+        createSession({
+            sessionId,
+            userId,
+
+            dbSeconds,
+            graceSeconds,
+
+            sessionDuration
+        });
         // ====================================
         // REAL DECart API KEY
         // ====================================
