@@ -1,59 +1,119 @@
-import express from "express";
-import { updateHeartbeat, isAlive, getSession } from "../lib/sessions.js";
+// origin-server/api/heartbeat.js
 
-const router = express.Router();
+import { supabase } from "../lib/supabase.js";
+import { verifyAuth } from "../lib/auth.js";
 
-router.post("/", async (req, res) => {
+const HEARTBEAT_TIMEOUT_MS = 15000; // must match node grace logic
+
+export default async function handler(req, res) {
+    // =========================================
+    // ONLY POST ALLOWED
+    // =========================================
+    if (req.method !== "POST") {
+        return res.status(405).json({
+            success: false,
+            error: "Method not allowed"
+        });
+    }
 
     try {
+        // =========================================
+        // AUTH CHECK (DO NOT SKIP)
+        // =========================================
+        const auth = await verifyAuth(req);
 
-        const { sessionId, token } = req.body;
-
-        if (!sessionId || !token) {
-            return res.json({ success: false });
-        }
-
-        const session = getSession(sessionId);
-
-        if (!session) {
-            return res.json({
+        if (!auth.valid) {
+            return res.status(401).json({
                 success: false,
-                reason: "session_not_found"
+                error: "Unauthorized"
             });
         }
 
-        // =====================================
-        // UPDATE HEARTBEAT TIME
-        // =====================================
+        const { sessionId } = req.body;
 
-        updateHeartbeat(sessionId);
-
-        // =====================================
-        // CHECK IF SESSION IS STILL VALID
-        // =====================================
-
-        const alive = isAlive(sessionId);
-
-        if (!alive) {
-            return res.json({
+        if (!sessionId) {
+            return res.status(400).json({
                 success: false,
-                reason: "session_timeout"
+                error: "Missing sessionId"
             });
         }
 
-        return res.json({
+        // =========================================
+        // FETCH SESSION
+        // =========================================
+        const { data: session, error } = await supabase
+            .from("sessions")
+            .select("*")
+            .eq("id", sessionId)
+            .single();
+
+        if (error || !session) {
+            return res.status(404).json({
+                success: false,
+                error: "Session not found"
+            });
+        }
+
+        // =========================================
+        // VALIDATE OWNERSHIP
+        // =========================================
+        if (session.user_id !== auth.user.id) {
+            return res.status(403).json({
+                success: false,
+                error: "Forbidden"
+            });
+        }
+
+        // =========================================
+        // SERVER TIME (TRUTH SOURCE)
+        // =========================================
+        const now = Date.now();
+
+        // =========================================
+        // UPDATE HEARTBEAT
+        // =========================================
+        const { error: updateError } = await supabase
+            .from("sessions")
+            .update({
+                last_seen: now
+            })
+            .eq("id", sessionId);
+
+        if (updateError) {
+            return res.status(500).json({
+                success: false,
+                error: "Failed to update heartbeat"
+            });
+        }
+
+        // =========================================
+        // OPTIONAL: DETECT STALE SESSION EARLY
+        // =========================================
+        const lastSeen = session.last_seen || session.started_at;
+
+        const diff = now - lastSeen;
+
+        let status = "alive";
+
+        if (diff > HEARTBEAT_TIMEOUT_MS) {
+            status = "stale";
+        }
+
+        // =========================================
+        // RESPONSE
+        // =========================================
+        return res.status(200).json({
             success: true,
-            status: "alive"
+            status,
+            serverTime: now
         });
 
     } catch (err) {
+        console.error("Heartbeat error:", err);
 
-        console.log("HEARTBEAT ERROR:", err);
-
-        return res.json({
-            success: false
+        return res.status(500).json({
+            success: false,
+            error: "Internal server error"
         });
     }
-});
-
-export default router;
+}
