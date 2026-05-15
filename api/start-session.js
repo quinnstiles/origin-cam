@@ -61,11 +61,14 @@ router.post('/', async (req, res) => {
 
         const sessionId = `session_${Date.now()}`;
 
-        createSession({
+        createSession(sessionId, {
             sessionId,
             userId,
             dbSeconds,
-            graceSeconds
+            graceSeconds,
+            sessionDuration,
+            createdAt: Date.now(),
+            isEnding: false
         });
 
         const decartApiKey = process.env.DECART_API_KEY;
