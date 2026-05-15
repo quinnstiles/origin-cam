@@ -1,100 +1,225 @@
 import express from "express";
+
 import { supabase } from "../lib/supabase.js";
+
+import {
+    getSession,
+    updateSession,
+    deleteSession
+} from "../lib/session-store.js";
+
+import {
+    calculateDuration,
+    calculateRemainingSeconds
+} from "../lib/billing.js";
 
 const router = express.Router();
 
-console.log("🔥 END SESSION ROUTE ACTIVE");
+// ========================================
+// END SESSION
+// ========================================
 
 router.post("/", async (req, res) => {
 
-    console.log("🔥 END SESSION HIT");
-    console.log("🔥 RAW BODY:", req.body);
-
-    const { token } = req.body || {};
-
-    if (!token) {
-        return res.status(400).json({
-            success: false,
-            message: "Missing token"
-        });
-    }
-
-    let userId;
-
     try {
-        const payload = JSON.parse(
-            Buffer.from(token.split(".")[1], "base64").toString()
+
+        console.log(
+            "🛑 END SESSION HIT"
         );
 
-        userId = payload.sub;
+        const {
+            sessionId
+        } = req.body || {};
 
-        console.log("👤 USER ID:", userId);
+        // ====================================
+        // VALIDATE SESSION ID
+        // ====================================
 
-    } catch (e) {
-        console.log("❌ TOKEN DECODE FAILED");
-        return res.status(400).json({
-            success: false,
-            message: "Invalid token"
+        if (!sessionId) {
+
+            console.log(
+                "❌ Missing sessionId"
+            );
+
+            return res.status(400).json({
+                success: false,
+                message: "Missing sessionId"
+            });
+        }
+
+        // ====================================
+        // GET SESSION
+        // ====================================
+
+        const session =
+            getSession(sessionId);
+
+        if (!session) {
+
+            console.log(
+                "❌ Session not found"
+            );
+
+            return res.status(404).json({
+                success: false,
+                message: "Session not found"
+            });
+        }
+
+        // ====================================
+        // PREVENT DOUBLE BILLING
+        // ====================================
+
+        if (session.isEnding) {
+
+            console.log(
+                "❌ Session already ending"
+            );
+
+            return res.status(400).json({
+                success: false,
+                message: "Session already ending"
+            });
+        }
+
+        // ====================================
+        // LOCK SESSION
+        // ====================================
+
+        updateSession(
+            sessionId,
+            {
+                isEnding: true
+            }
+        );
+
+        console.log(
+            "🔒 SESSION LOCKED"
+        );
+
+        // ====================================
+        // CALCULATE DURATION
+        // ====================================
+
+        const duration =
+            calculateDuration(
+                session
+            );
+
+        console.log(
+            "⏱ DURATION:",
+            duration
+        );
+
+        // ====================================
+        // GET LATEST DB USER
+        // ====================================
+
+        const {
+            data: user,
+            error: fetchError
+        } = await supabase
+            .from("users")
+            .select("remaining_seconds")
+            .eq("id", session.userId)
+            .single();
+
+        if (
+            fetchError ||
+            !user
+        ) {
+            throw new Error(
+                "Failed to fetch user"
+            );
+        }
+
+        // ====================================
+        // CALCULATE NEW TIME
+        // ====================================
+
+        const updatedRemaining =
+            calculateRemainingSeconds(
+                user.remaining_seconds,
+                duration
+            );
+
+        console.log(
+            "💰 BILLING:",
+            {
+                before:
+                    user.remaining_seconds,
+
+                duration,
+
+                after:
+                    updatedRemaining
+            }
+        );
+
+        // ====================================
+        // UPDATE DATABASE
+        // ====================================
+
+        const {
+            error: updateError
+        } = await supabase
+            .from("users")
+            .update({
+                remaining_seconds:
+                    updatedRemaining
+            })
+            .eq(
+                "id",
+                session.userId
+            );
+
+        if (updateError) {
+            throw new Error(
+                "DB update failed"
+            );
+        }
+
+        console.log(
+            "✅ DB UPDATED"
+        );
+
+        // ====================================
+        // DELETE SESSION
+        // ====================================
+
+        deleteSession(
+            sessionId
+        );
+
+        console.log(
+            "🗑 SESSION DELETED"
+        );
+
+        // ====================================
+        // RESPONSE
+        // ====================================
+
+        return res.json({
+            success: true,
+
+            duration,
+
+            remainingSeconds:
+                updatedRemaining
         });
-    }
 
-    // =========================================
-    // GET USER
-    // =========================================
-    const { data: user, error } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", userId)
-        .single();
+    } catch (err) {
 
-    if (error || !user) {
-        console.log("❌ USER NOT FOUND");
-        return res.status(404).json({
-            success: false,
-            message: "User not found"
-        });
-    }
-
-    console.log("💰 BEFORE:", user.remaining_seconds);
-
-    // =========================================
-    // DEBIT 20 SECONDS
-    // =========================================
-    const debited = 20;
-
-    const after = Math.max(
-        0,
-        user.remaining_seconds - debited
-    );
-
-    const { error: updateError } = await supabase
-        .from("users")
-        .update({
-            remaining_seconds: after
-        })
-        .eq("id", userId);
-
-    if (updateError) {
-        console.log("❌ UPDATE FAILED:", updateError.message);
+        console.log(
+            "❌ END SESSION ERROR:",
+            err.message
+        );
 
         return res.status(500).json({
             success: false,
-            message: "DB update failed"
+            message: err.message
         });
     }
-
-    console.log("💰 DEBIT SUCCESS:", {
-        before: user.remaining_seconds,
-        debited,
-        after
-    });
-
-    return res.json({
-        success: true,
-        before: user.remaining_seconds,
-        debited,
-        after
-    });
 });
 
 export default router;

@@ -1,75 +1,209 @@
-import express from 'express';
-import { createSession } from "../lib/sessionStore.js";
+import express from "express";
+import crypto from "crypto";
+
+import { supabase } from "../lib/supabase.js";
+
+import {
+    createSession
+} from "../lib/session-store.js";
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
+// ========================================
+// START SESSION
+// ========================================
+
+router.post("/", async (req, res) => {
 
     try {
 
-        const { token } = req.body;
+        console.log(
+            "🔥 START SESSION HIT"
+        );
+
+        const { token } = req.body || {};
+
+        // ====================================
+        // VALIDATE TOKEN
+        // ====================================
 
         if (!token) {
-            return res.status(401).json({
+
+            console.log(
+                "❌ Missing token"
+            );
+
+            return res.status(400).json({
                 success: false,
-                message: 'Missing auth token'
+                message: "Missing token"
             });
         }
 
-        const userId = "temporary-user";
+        // ====================================
+        // DECODE TOKEN
+        // ====================================
 
-        // ========================================
-        // DB TIME (seconds from DB)
-        // ========================================
-        const dbSeconds = 99999;
+        let payload;
 
-        if (dbSeconds <= 0) {
-            return res.status(403).json({
+        try {
+
+            payload = JSON.parse(
+                Buffer
+                    .from(
+                        token.split(".")[1],
+                        "base64"
+                    )
+                    .toString()
+            );
+
+        } catch {
+
+            console.log(
+                "❌ Token decode failed"
+            );
+
+            return res.status(400).json({
                 success: false,
-                message: 'No remaining time'
+                message: "Invalid token"
             });
         }
 
-        // ========================================
-        // GRACE TIME (SECONDS → MS LATER)
-        // NOTE: 10 = 10 seconds (NOT ms)
-        // ========================================
-        const graceSeconds = 10;
+        const userId = payload.sub;
 
-        const sessionDuration = dbSeconds + graceSeconds;
+        if (!userId) {
 
-        const sessionId = `session_${Date.now()}`;
+            console.log(
+                "❌ Missing userId"
+            );
 
-        createSession({
+            return res.status(400).json({
+                success: false,
+                message: "Invalid token payload"
+            });
+        }
+
+        console.log(
+            "👤 USER:",
+            userId
+        );
+
+        // ====================================
+        // GET USER
+        // ====================================
+
+        const {
+            data: user,
+            error
+        } = await supabase
+            .from("users")
+            .select("*")
+            .eq("id", userId)
+            .single();
+
+        if (error || !user) {
+
+            console.log(
+                "❌ User not found"
+            );
+
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        // ====================================
+        // VALIDATE TIME
+        // ====================================
+
+        if (
+            user.remaining_seconds <= 0
+        ) {
+
+            console.log(
+                "❌ No remaining time"
+            );
+
+            return res.status(400).json({
+                success: false,
+                message: "No remaining time"
+            });
+        }
+
+        // ====================================
+        // CREATE SESSION
+        // ====================================
+
+        const sessionId =
+            crypto.randomUUID();
+
+        const now =
+            Date.now();
+
+        const graceSeconds =
+            Number(
+                process.env
+                    .SESSION_GRACE_SECONDS
+            );
+
+        if (
+            Number.isNaN(graceSeconds)
+        ) {
+
+            throw new Error(
+                "Invalid SESSION_GRACE_SECONDS"
+            );
+        }
+
+        createSession(
             sessionId,
-            userId,
-            dbSeconds,
-            graceSeconds,
-            sessionDuration
-        });
+            {
+                sessionId,
+                userId,
 
-        const decartApiKey = process.env.DECART_API_KEY;
+                startTime: now,
 
-        if (!decartApiKey) {
-            return res.status(500).json({
-                success: false,
-                message: 'Missing DECart API key'
-            });
-        }
+                firstHeartbeat: null,
+                lastHeartbeat: null,
+
+                remainingSeconds:
+                    user.remaining_seconds,
+
+                graceSeconds,
+
+                isEnding: false,
+                isActive: true
+            }
+        );
+
+        console.log(
+            "✅ SESSION CREATED:",
+            sessionId
+        );
+
+        // ====================================
+        // RESPONSE
+        // ====================================
 
         return res.json({
             success: true,
+
             sessionId,
-            decartToken: decartApiKey,
-            userId
+
+            remainingSeconds:
+                user.remaining_seconds
         });
 
     } catch (err) {
-        console.log('START SESSION ERROR:', err.message);
+
+        console.log(
+            "❌ START SESSION ERROR:",
+            err.message
+        );
 
         return res.status(500).json({
             success: false,
-            message: 'Server error'
+            message: err.message
         });
     }
 });

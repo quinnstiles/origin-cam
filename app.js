@@ -1,33 +1,98 @@
 import express from "express";
 import cors from "cors";
+import dotenv from "dotenv";
 
-import authRoute from "./api/auth.js";
-import startSessionRoute from "./api/start-session.js";
-import endSessionRoute from "./api/end-session.js";
+// ========================================
+// LOAD ENV
+// ========================================
+
+dotenv.config();
+
+// ========================================
+// ROUTES
+// ========================================
+
+import startSessionRoute
+    from "./api/start-session.js";
+
+import heartbeatRoute
+    from "./api/heartbeat.js";
+
+import endSessionRoute
+    from "./api/end-session.js";
+
+// ========================================
+// HEARTBEAT MONITOR
+// ========================================
+
+import {
+    startHeartbeatMonitor
+} from "./lib/heartbeat-monitor.js";
+
+// ========================================
+// APP
+// ========================================
 
 const app = express();
 
-console.log("🚀 SERVER BOOTING...");
-console.log("SUPABASE_URL:", !!process.env.SUPABASE_URL);
-console.log("SUPABASE_KEY:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+// ========================================
+// MIDDLEWARE
+// ========================================
 
-// =========================
-// MUST BE FIRST
-// =========================
 app.use(cors());
-app.use(express.json()); // 🔥 MUST BE HERE BEFORE ROUTES
 
-// =========================
+app.use(express.json({
+    limit: "10mb"
+}));
+
+// ========================================
 // ROUTES
-// =========================
-app.use("/api/auth", authRoute);
-app.use("/api/start-session", startSessionRoute);
-app.use("/api/end-session", endSessionRoute);
+// ========================================
+
+app.use(
+    "/api/start-session",
+    startSessionRoute
+);
+
+app.use(
+    "/api/heartbeat",
+    heartbeatRoute
+);
+
+app.use(
+    "/api/end-session",
+    endSessionRoute
+);
+
+// ========================================
+// HEALTH CHECK
+// ========================================
 
 app.get("/", (req, res) => {
-    res.json({ success: true, message: "Origin Server Online" });
+
+    res.json({
+        success: true,
+        message:
+            "Origin server running"
+    });
 });
 
-app.listen(3000, () => {
-    console.log("🚀 Origin Server running on port 3000");
+// ========================================
+// START HEARTBEAT MONITOR
+// ========================================
+
+startHeartbeatMonitor();
+
+// ========================================
+// SERVER
+// ========================================
+
+const PORT =
+    process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+
+    console.log(
+        `🚀 SERVER RUNNING ON ${PORT}`
+    );
 });
