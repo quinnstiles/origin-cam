@@ -11,6 +11,8 @@ dotenv.config();
 // ========================================
 // ROUTES
 // ========================================
+import authRoute
+    from "./api/auth.js";
 
 import startSessionRoute
     from "./api/start-session.js";
@@ -48,6 +50,13 @@ app.use(express.json({
 // ========================================
 // ROUTES
 // ========================================
+
+
+app.use(
+    "/api/auth",
+    authRoute
+);
+
 
 app.use(
     "/api/start-session",
