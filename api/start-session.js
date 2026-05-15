@@ -1,99 +1,129 @@
 import express from "express";
 import { createSession } from "../lib/session-store.js";
+import { supabase } from "../lib/supabase.js";
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
-
+// ========================================
+// START SESSION
+// ========================================
+router.post("/", async (req, res) => {
     try {
-
         const { token } = req.body;
 
+        // ====================================
+        // VALIDATE TOKEN
+        // ====================================
         if (!token) {
             return res.status(401).json({
                 success: false,
-                message: 'Missing auth token'
+                message: "Missing auth token"
             });
         }
 
-        // ========================================
-        // REAL USER ID FROM TOKEN (DO NOT HARDCODE)
-        // ========================================
+        // ====================================
+        // DECODE USER ID FROM TOKEN
+        // ====================================
         let userId;
 
         try {
             const payload = JSON.parse(
-                Buffer.from(token.split('.')[1], 'base64').toString()
+                Buffer.from(token.split(".")[1], "base64").toString()
             );
 
             userId = payload.sub;
-
-        } catch (e) {
+        } catch (err) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid token'
+                message: "Invalid token"
             });
         }
 
         if (!userId) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing userId'
+                message: "Missing userId"
             });
         }
 
-        // ========================================
-        // DB TIME (replace later with Supabase)
-        // ========================================
-        const dbSeconds = 99999;
+        // ====================================
+        // GET USER TIME FROM DATABASE
+        // ====================================
+        const { data: user, error } = await supabase
+            .from("users")
+            .select("remaining_seconds")
+            .eq("id", userId)
+            .single();
+
+        if (error || !user) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to fetch user time"
+            });
+        }
+
+        const dbSeconds = user.remaining_seconds;
 
         if (dbSeconds <= 0) {
             return res.status(403).json({
                 success: false,
-                message: 'No remaining time'
+                message: "No remaining time"
             });
         }
 
-        // ========================================
-        // GRACE TIME (SECONDS)
-        // ========================================
-        const graceSeconds = 10;
+        // ====================================
+        // GRACE TIME (CONFIG SAFE)
+        // ====================================
+        const GRACE_SECONDS = 10;
+        const sessionDuration = dbSeconds + GRACE_SECONDS;
 
+        // ====================================
+        // CREATE SESSION ID
+        // ====================================
         const sessionId = `session_${Date.now()}`;
 
+        // ====================================
+        // STORE SESSION IN MEMORY
+        // ====================================
         createSession(sessionId, {
             sessionId,
             userId,
             dbSeconds,
-            graceSeconds,
+            graceSeconds: GRACE_SECONDS,
             sessionDuration,
             createdAt: Date.now(),
             isEnding: false
         });
 
+        console.log("💾 SESSION CREATED:", sessionId);
+
+        // ====================================
+        // GET DE CART KEY
+        // ====================================
         const decartApiKey = process.env.DECART_API_KEY;
 
         if (!decartApiKey) {
             return res.status(500).json({
                 success: false,
-                message: 'Missing DECart API key'
+                message: "Missing DECart API key"
             });
         }
 
+        // ====================================
+        // RESPONSE (MINIMAL + STABLE)
+        // ====================================
         return res.json({
             success: true,
             sessionId,
-            decartToken: process.env.DECART_API_KEY
+            decartToken: decartApiKey
         });
 
-
-
     } catch (err) {
-        console.log('START SESSION ERROR:', err.message);
+        console.log("START SESSION ERROR:", err.message);
 
         return res.status(500).json({
             success: false,
-            message: 'Server error'
+            message: "Server error"
         });
     }
 });
