@@ -80,10 +80,10 @@ router.post('/', async (req, res) => {
         return res.json({
             success: true,
             sessionId,
-            decartToken: process.env.DECART_API_KEY, // or generated token
-            remainingSeconds: user.remaining_seconds,
-            userId
+            decartToken: process.env.DECART_API_KEY
         });
+
+
 
     } catch (err) {
         console.log('START SESSION ERROR:', err.message);
