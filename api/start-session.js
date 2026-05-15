@@ -80,8 +80,8 @@ router.post('/', async (req, res) => {
         return res.json({
             success: true,
             sessionId,
-            remainingSeconds: dbSeconds,
-            decartToken: decartApiKey,
+            decartToken: process.env.DECART_API_KEY, // or generated token
+            remainingSeconds: user.remaining_seconds,
             userId
         });
 
