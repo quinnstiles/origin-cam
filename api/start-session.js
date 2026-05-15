@@ -4,16 +4,10 @@ import { supabase } from "../lib/supabase.js";
 
 const router = express.Router();
 
-// ========================================
-// START SESSION
-// ========================================
 router.post("/", async (req, res) => {
     try {
         const { token } = req.body;
 
-        // ====================================
-        // VALIDATE TOKEN
-        // ====================================
         if (!token) {
             return res.status(401).json({
                 success: false,
@@ -22,7 +16,7 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // DECODE USER ID FROM TOKEN
+        // DECODE USER ID
         // ====================================
         let userId;
 
@@ -47,7 +41,7 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // GET USER TIME FROM DATABASE
+        // GET USER TIME
         // ====================================
         const { data: user, error } = await supabase
             .from("users")
@@ -72,24 +66,23 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // GRACE TIME (CONFIG SAFE)
+        // GRACE TIME (SAFE + CONFIG)
         // ====================================
-        const GRACE_SECONDS = 10;
-        const sessionDuration = dbSeconds + GRACE_SECONDS;
+        const graceSeconds = Number(process.env.GRACE_SECONDS);
+
+        // total session window (informational only)
+        const sessionDuration = dbSeconds + graceSeconds;
 
         // ====================================
-        // CREATE SESSION ID
+        // CREATE SESSION
         // ====================================
         const sessionId = `session_${Date.now()}`;
 
-        // ====================================
-        // STORE SESSION IN MEMORY
-        // ====================================
         createSession(sessionId, {
             sessionId,
             userId,
             dbSeconds,
-            graceSeconds: GRACE_SECONDS,
+            graceSeconds,
             sessionDuration,
             createdAt: Date.now(),
             isEnding: false
@@ -98,7 +91,7 @@ router.post("/", async (req, res) => {
         console.log("💾 SESSION CREATED:", sessionId);
 
         // ====================================
-        // GET DE CART KEY
+        // DE CART KEY
         // ====================================
         const decartApiKey = process.env.DECART_API_KEY;
 
@@ -110,7 +103,7 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // RESPONSE (MINIMAL + STABLE)
+        // RESPONSE
         // ====================================
         return res.json({
             success: true,

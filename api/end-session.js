@@ -1,5 +1,4 @@
 import express from "express";
-
 import { supabase } from "../lib/supabase.js";
 
 import {
@@ -9,38 +8,19 @@ import {
 } from "../lib/session-store.js";
 
 import {
-    calculateDuration,
-    calculateRemainingSeconds
+    calculateDuration
 } from "../lib/billing.js";
 
 const router = express.Router();
 
-// ========================================
-// END SESSION
-// ========================================
-
 router.post("/", async (req, res) => {
-
     try {
 
-        console.log(
-            "🛑 END SESSION HIT"
-        );
+        console.log("🛑 END SESSION HIT");
 
-        const {
-            sessionId
-        } = req.body || {};
-
-        // ====================================
-        // VALIDATE SESSION ID
-        // ====================================
+        const { sessionId } = req.body || {};
 
         if (!sessionId) {
-
-            console.log(
-                "❌ Missing sessionId"
-            );
-
             return res.status(400).json({
                 success: false,
                 message: "Missing sessionId"
@@ -50,16 +30,9 @@ router.post("/", async (req, res) => {
         // ====================================
         // GET SESSION
         // ====================================
-
-        const session =
-            getSession(sessionId);
+        const session = getSession(sessionId);
 
         if (!session) {
-
-            console.log(
-                "❌ Session not found"
-            );
-
             return res.status(404).json({
                 success: false,
                 message: "Session not found"
@@ -67,153 +40,108 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // PREVENT DOUBLE BILLING
+        // DOUBLE STOP GUARD (ATOMIC STYLE)
         // ====================================
-
         if (session.isEnding) {
+            console.log("⚠️ ALREADY ENDING:", sessionId);
 
-            console.log(
-                "❌ Session already ending"
-            );
-
-            return res.status(400).json({
-                success: false,
-                message: "Session already ending"
+            return res.json({
+                success: true,
+                message: "Already ending"
             });
         }
 
-        // ====================================
-        // LOCK SESSION
-        // ====================================
+        updateSession(sessionId, { isEnding: true });
 
-        updateSession(
-            sessionId,
-            {
-                isEnding: true
-            }
-        );
-
-        console.log(
-            "🔒 SESSION LOCKED"
-        );
+        console.log("🔒 SESSION LOCKED:", sessionId);
 
         // ====================================
-        // CALCULATE DURATION
+        // CALCULATE DURATION (RAW)
         // ====================================
+        const rawDuration = calculateDuration(session);
 
-        const duration =
-            calculateDuration(
-                session
-            );
-
-        console.log(
-            "⏱ DURATION:",
-            duration
-        );
+        console.log("⏱ RAW DURATION:", rawDuration);
 
         // ====================================
-        // GET LATEST DB USER
+        // GET USER
         // ====================================
-
-        const {
-            data: user,
-            error: fetchError
-        } = await supabase
+        const { data: user, error } = await supabase
             .from("users")
             .select("remaining_seconds")
             .eq("id", session.userId)
             .single();
 
-        if (
-            fetchError ||
-            !user
-        ) {
-            throw new Error(
-                "Failed to fetch user"
-            );
+        if (error || !user) {
+            console.log("❌ USER FETCH FAILED");
+
+            return res.status(500).json({
+                success: false,
+                message: "Failed to fetch user"
+            });
         }
 
         // ====================================
-        // CALCULATE NEW TIME
+        // APPLY BILLING (IMPORTANT FIX)
         // ====================================
+
+        const graceSeconds = session.graceSeconds || 0;
+
+        const billableDuration =
+            Math.max(0, rawDuration - graceSeconds);
 
         const updatedRemaining =
             calculateRemainingSeconds(
                 user.remaining_seconds,
-                duration
+                billableDuration
             );
 
-        console.log(
-            "💰 BILLING:",
-            {
-                before:
-                    user.remaining_seconds,
-
-                duration,
-
-                after:
-                    updatedRemaining
-            }
-        );
+        console.log("💰 BILLING CALC:", {
+            before: user.remaining_seconds,
+            rawDuration,
+            graceSeconds,
+            billableDuration,
+            after: updatedRemaining
+        });
 
         // ====================================
-        // UPDATE DATABASE
+        // UPDATE DB
         // ====================================
-
-        const {
-            error: updateError
-        } = await supabase
+        const { error: updateError } = await supabase
             .from("users")
             .update({
-                remaining_seconds:
-                    updatedRemaining
+                remaining_seconds: updatedRemaining
             })
-            .eq(
-                "id",
-                session.userId
-            );
+            .eq("id", session.userId);
 
         if (updateError) {
-            throw new Error(
-                "DB update failed"
-            );
+            console.log("❌ DB UPDATE FAILED");
+
+            return res.status(500).json({
+                success: false,
+                message: "DB update failed"
+            });
         }
 
-        console.log(
-            "✅ DB UPDATED"
-        );
+        console.log("✅ DB UPDATED");
 
         // ====================================
-        // DELETE SESSION
+        // CLEAN SESSION
         // ====================================
+        deleteSession(sessionId);
 
-        deleteSession(
-            sessionId
-        );
-
-        console.log(
-            "🗑 SESSION DELETED"
-        );
+        console.log("🗑 SESSION DELETED");
 
         // ====================================
         // RESPONSE
         // ====================================
-
         return res.json({
             success: true,
-
-            duration,
-
-            remainingSeconds:
-                updatedRemaining
+            duration: billableDuration,
+            remainingSeconds: updatedRemaining
         });
 
     } catch (err) {
-
-        console.log(
-            "❌ END SESSION ERROR:",
-            err.message
-        );
+        console.log("❌ END SESSION ERROR:", err.message);
 
         return res.status(500).json({
             success: false,
