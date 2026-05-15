@@ -1,5 +1,5 @@
 import express from "express";
-import { createSession } from "../lib/sessionStore.js";
+import { createSession } from "../lib/session-store.js";
 
 const router = express.Router();
 
