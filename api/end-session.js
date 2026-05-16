@@ -8,7 +8,8 @@ import {
 } from "../lib/session-store.js";
 
 import {
-    calculateDuration
+    calculateDuration,
+    calculateRemainingSeconds
 } from "../lib/billing.js";
 
 const router = express.Router();
