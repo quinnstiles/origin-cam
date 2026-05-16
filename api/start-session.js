@@ -85,14 +85,17 @@ router.post("/", async (req, res) => {
         // ====================================
         const sessionId = `session_${Date.now()}`;
 
-        for (const [, session] of getAllSessions()) {
-            if (session.userId === userId) {
-                console.log("⚠️ ACTIVE SESSION EXISTS → BLOCKING START");
-                return res.status(409).json({
-                    success: false,
-                    message: "Session already running"
-                });
-            }
+        const sessions = Array.from(getAllSessions().values());
+
+        const active = sessions.find(
+            s => s.userId === userId && !s.isEnding
+        );
+
+        if (active) {
+            return res.status(409).json({
+                success: false,
+                message: "Session already running"
+            });
         }
 
         createSession(sessionId, {
