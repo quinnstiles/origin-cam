@@ -68,7 +68,7 @@ router.post("/", async (req, res) => {
         // ====================================
         // GRACE TIME (SAFE + CONFIG)
         // ====================================
-        const graceSeconds = Number(process.env.GRACE_SECONDS);
+        const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS);
 
         // total session window (informational only)
         const sessionDuration = dbSeconds + graceSeconds;
