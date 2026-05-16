@@ -12,6 +12,10 @@ import {
     calculateRemainingSeconds
 } from "../lib/billing.js";
 
+import {
+    clearSessionTimeout
+} from "../lib/session-monitor.js";
+
 const router = express.Router();
 
 router.post("/", async (req, res) => {
@@ -124,6 +128,7 @@ router.post("/", async (req, res) => {
         // CLEAN SESSION
         // ====================================
         deleteSession(sessionId);
+        clearSessionTimeout(sessionId);
 
         console.log("🗑 SESSION DELETED");
 

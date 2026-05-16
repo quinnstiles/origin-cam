@@ -1,6 +1,9 @@
 import express from "express";
 import { createSession } from "../lib/session-store.js";
 import { supabase } from "../lib/supabase.js";
+import {
+    startSessionTimeout
+} from "../lib/session-monitor.js";
 
 const router = express.Router();
 
@@ -89,6 +92,20 @@ router.post("/", async (req, res) => {
         });
 
         console.log("💾 SESSION CREATED:", sessionId);
+
+        startSessionTimeout(
+            sessionId,
+            sessionDuration * 1000,
+            async () => {
+
+                console.log(
+                    "🛑 AUTO END:",
+                    sessionId
+                );
+
+                // call your internal end logic here
+            }
+        );
 
         // ====================================
         // DE CART KEY
