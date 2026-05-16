@@ -181,6 +181,13 @@ router.post("/", async (req, res) => {
         const decartToken =
             decartJson?.apiKey;
 
+        if (!decartResponse.ok) {
+            return res.status(500).json({
+                success: false,
+                message: "Decart token request failed"
+            });
+        }
+
         if (!decartToken) {
 
             return res.status(500).json({
@@ -196,7 +203,7 @@ router.post("/", async (req, res) => {
             success: true,
             sessionId,
             sessionDuration,
-            decartToken
+            decartToken: decartToken
         });
 
     } catch (err) {
