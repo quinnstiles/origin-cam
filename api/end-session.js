@@ -8,7 +8,7 @@ import {
 } from "../lib/session-store.js";
 
 import {
-    calculateDuration,
+    calculateBillableDuration,
     calculateRemainingSeconds
 } from "../lib/billing.js";
 
@@ -59,7 +59,7 @@ router.post("/", async (req, res) => {
         // ====================================
         // CALCULATE DURATION (RAW)
         // ====================================
-        const rawDuration = calculateDuration(session);
+        const rawDuration = calculateBillableDuration(session);
 
         console.log("⏱ RAW DURATION:", rawDuration);
 
@@ -82,13 +82,10 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // APPLY BILLING (IMPORTANT FIX)
+        // APPLY BILLING
         // ====================================
 
-        const graceSeconds = session.graceSeconds || 0;
-
-        const billableDuration =
-            Math.max(0, rawDuration - graceSeconds);
+        const billableDuration = rawDuration;
 
         const updatedRemaining =
             calculateRemainingSeconds(
@@ -98,8 +95,6 @@ router.post("/", async (req, res) => {
 
         console.log("💰 BILLING CALC:", {
             before: user.remaining_seconds,
-            rawDuration,
-            graceSeconds,
             billableDuration,
             after: updatedRemaining
         });
