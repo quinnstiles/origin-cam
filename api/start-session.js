@@ -128,44 +128,38 @@ router.post("/", async (req, res) => {
         // CREATE DE CART CLIENT TOKEN
         // ====================================
 
-        const decartApiKey =
-            process.env.DECART_API_KEY;
-
-        if (!decartApiKey) {
-            return res.status(500).json({
-                success: false,
-                message: "Missing DECart API key"
-            });
-        }
-
-        // IMPORTANT:
-        // temporary restricted token
-
         const decartResponse = await fetch(
-            "https://api.decart.ai/v1/client-tokens",
+            "https://api.decart.ai/v1/client/tokens",
             {
                 method: "POST",
 
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization":
-                        `Bearer ${decartApiKey}`
+
+                    // IMPORTANT:
+                    // correct auth header
+
+                    "x-api-key": decartApiKey
                 },
 
                 body: JSON.stringify({
 
-                    realtime: {
+                    // short token lifetime
+                    expiresIn: 60,
 
-                        // IMPORTANT:
-                        // hard realtime session limit
+                    // allowed realtime models
+                    allowedModels: [
+                        "lucy-2"
+                    ],
 
-                        maxSessionDuration:
-                            sessionDuration,
+                    // IMPORTANT:
+                    // hard realtime session limit
 
-                        // optional safety
-                        allowedModels: [
-                            "lucy-2"
-                        ]
+                    constraints: {
+                        realtime: {
+                            maxSessionDuration:
+                                sessionDuration
+                        }
                     }
                 })
             }
@@ -179,12 +173,8 @@ router.post("/", async (req, res) => {
             decartJson
         );
 
-        // IMPORTANT:
-        // token field may differ slightly
-        // we'll inspect logs first
-
         const decartToken =
-            decartJson?.token;
+            decartJson?.apiKey;
 
         if (!decartToken) {
 
@@ -194,7 +184,6 @@ router.post("/", async (req, res) => {
                     "Failed creating Decart token"
             });
         }
-
         // ====================================
         // RESPONSE
         // ====================================
