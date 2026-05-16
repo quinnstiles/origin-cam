@@ -5,6 +5,10 @@ import {
     startSessionTimeout
 } from "../lib/session-monitor.js";
 
+import {
+    finalizeSession
+} from "../lib/finalizeSession.js";
+
 const router = express.Router();
 
 router.post("/", async (req, res) => {
@@ -103,7 +107,10 @@ router.post("/", async (req, res) => {
                     sessionId
                 );
 
-                // call your internal end logic here
+                await finalizeSession(
+                    sessionId,
+                    true
+                );
             }
         );
 
