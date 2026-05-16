@@ -32,7 +32,7 @@ router.post("/", async (req, res) => {
         // GET SESSION
         // ====================================
         const session = getSession(sessionId);
-
+        console.log("🧪 FULL SESSION:", session);
         if (!session) {
             return res.status(404).json({
                 success: false,
