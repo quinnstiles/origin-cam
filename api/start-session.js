@@ -1,5 +1,5 @@
 import express from "express";
-import { createSession } from "../lib/session-store.js";
+import { createSession, getAllSessions } from "../lib/session-store.js";
 import { supabase } from "../lib/supabase.js";
 import {
     startSessionTimeout
@@ -85,6 +85,16 @@ router.post("/", async (req, res) => {
         // ====================================
         const sessionId = `session_${Date.now()}`;
 
+        for (const [, session] of getAllSessions()) {
+            if (session.userId === userId) {
+                console.log("⚠️ ACTIVE SESSION EXISTS → BLOCKING START");
+                return res.status(409).json({
+                    success: false,
+                    message: "Session already running"
+                });
+            }
+        }
+
         createSession(sessionId, {
             sessionId,
             userId,
@@ -115,14 +125,73 @@ router.post("/", async (req, res) => {
         );
 
         // ====================================
-        // DE CART KEY
+        // CREATE DE CART CLIENT TOKEN
         // ====================================
-        const decartApiKey = process.env.DECART_API_KEY;
+
+        const decartApiKey =
+            process.env.DECART_API_KEY;
 
         if (!decartApiKey) {
             return res.status(500).json({
                 success: false,
                 message: "Missing DECart API key"
+            });
+        }
+
+        // IMPORTANT:
+        // temporary restricted token
+
+        const decartResponse = await fetch(
+            "https://api.decart.ai/v1/client-tokens",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization":
+                        `Bearer ${decartApiKey}`
+                },
+
+                body: JSON.stringify({
+
+                    realtime: {
+
+                        // IMPORTANT:
+                        // hard realtime session limit
+
+                        maxSessionDuration:
+                            sessionDuration,
+
+                        // optional safety
+                        allowedModels: [
+                            "lucy-2"
+                        ]
+                    }
+                })
+            }
+        );
+
+        const decartJson =
+            await decartResponse.json();
+
+        console.log(
+            "🧠 DE CART TOKEN RESPONSE:",
+            decartJson
+        );
+
+        // IMPORTANT:
+        // token field may differ slightly
+        // we'll inspect logs first
+
+        const decartToken =
+            decartJson?.token;
+
+        if (!decartToken) {
+
+            return res.status(500).json({
+                success: false,
+                message:
+                    "Failed creating Decart token"
             });
         }
 
@@ -132,7 +201,8 @@ router.post("/", async (req, res) => {
         return res.json({
             success: true,
             sessionId,
-            decartToken: decartApiKey
+            sessionDuration,
+            decartToken
         });
 
     } catch (err) {
