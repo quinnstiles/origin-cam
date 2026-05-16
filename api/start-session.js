@@ -128,6 +128,8 @@ router.post("/", async (req, res) => {
         // CREATE DE CART CLIENT TOKEN
         // ====================================
 
+        const decartApiKey = process.env.DECART_API_KEY;
+
         const decartResponse = await fetch(
             "https://api.decart.ai/v1/client/tokens",
             {
