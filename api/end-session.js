@@ -2,7 +2,7 @@ import express from "express";
 
 import {
     getSession,
-    closeSession
+    removeSession
 } from "../lib/session-store.js";
 
 import {
