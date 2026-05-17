@@ -1,26 +1,16 @@
 import express from "express";
-
-import {
-    createSession,
-    getUserSession
-} from "../lib/session-store.js";
+import { createSession, getUserSession } from "../lib/session-store.js";
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
-
     try {
-
         console.log("🟢 START SESSION HIT");
-
-        // ====================================
-        // GET TOKEN
-        // ====================================
 
         const { token } = req.body;
 
+        // ❌ MUST HAVE TOKEN
         if (!token) {
-
             return res.status(400).json({
                 success: false,
                 message: "Missing token"
@@ -30,24 +20,15 @@ router.post("/", async (req, res) => {
         // ====================================
         // DECODE USER
         // ====================================
-
-        let userId = null;
+        let userId;
 
         try {
-
             const payload = JSON.parse(
-                Buffer
-                    .from(
-                        token.split(".")[1],
-                        "base64"
-                    )
-                    .toString()
+                Buffer.from(token.split(".")[1], "base64").toString()
             );
 
             userId = payload.sub;
-
         } catch {
-
             return res.status(400).json({
                 success: false,
                 message: "Invalid token"
@@ -55,7 +36,6 @@ router.post("/", async (req, res) => {
         }
 
         if (!userId) {
-
             return res.status(400).json({
                 success: false,
                 message: "Missing userId"
@@ -63,18 +43,12 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // DUPLICATE SESSION CHECK
+        // SIMPLE SESSION CHECK
         // ====================================
+        const existing = getUserSession(userId);
 
-        const existingSession =
-            getUserSession(userId);
-
-        if (existingSession) {
-
-            console.log(
-                "⚠️ USER ALREADY ACTIVE"
-            );
-
+        if (existing) {
+            console.log("⚠️ USER HAS ACTIVE SESSION");
             return res.status(409).json({
                 success: false,
                 message: "Session already running"
@@ -82,122 +56,72 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // SESSION CONFIG
+        // MINIMAL SESSION DATA
         // ====================================
+        const sessionId = `session_${Date.now()}`;
 
-        const dbSeconds = 60;
-
-        const graceSeconds = 5;
-
-        const sessionDuration =
-            dbSeconds + graceSeconds;
-
-        const sessionId =
-            `session_${Date.now()}`;
-
-        // ====================================
-        // STORE SESSION
-        // ====================================
-
-        createSession({
-
+        const session = {
             sessionId,
             userId,
+            createdAt: Date.now(),
             closed: false
-        });
+        };
 
-        console.log(
-            "💾 SESSION STORED:",
-            sessionId
-        );
+        createSession(session);
+
+        console.log("💾 SESSION CREATED:", sessionId);
 
         // ====================================
-        // DE CART API KEY
+        // DE CART TOKEN (ONLY WHAT WE NEED)
         // ====================================
-
-        const decartApiKey =
-            process.env.DECART_API_KEY;
+        const decartApiKey = process.env.DECART_API_KEY;
 
         if (!decartApiKey) {
-
             return res.status(500).json({
                 success: false,
-                message: "Missing DE CART key"
+                message: "Missing Decart key"
             });
         }
-
-        // ====================================
-        // CREATE CLIENT TOKEN
-        // ====================================
 
         const decartResponse = await fetch(
             "https://api.decart.ai/v1/client/tokens",
             {
                 method: "POST",
-
                 headers: {
-                    "Content-Type":
-                        "application/json",
-
-                    "x-api-key":
-                        decartApiKey
+                    "Content-Type": "application/json",
+                    "x-api-key": decartApiKey
                 },
-
                 body: JSON.stringify({
-
-                    expiresIn: 60,
-
-                    allowedModels: [
-                        "lucy-2"
-                    ],
-
-                    constraints: {
-                        realtime: {
-                            maxSessionDuration:
-                                sessionDuration
-                        }
-                    }
+                    expiresIn: 120,
+                    allowedModels: ["lucy-2"]
                 })
             }
         );
 
-        const decartJson =
-            await decartResponse.json();
+        const decartJson = await decartResponse.json();
 
-        console.log(
-            "🧠 DE CART RESPONSE:",
-            decartJson
-        );
-
-        if (!decartResponse.ok) {
+        if (!decartResponse.ok || !decartJson.apiKey) {
+            console.log("❌ DE CART ERROR:", decartJson);
 
             return res.status(500).json({
                 success: false,
-                message:
-                    "Failed creating DE CART token"
+                message: "Failed to create Decart token"
             });
         }
 
-        // ====================================
-        // RESPONSE
-        // ====================================
+        console.log("🧠 DE CART TOKEN READY");
 
+        // ====================================
+        // RESPONSE (CLEAN)
+        // ====================================
         return res.json({
-
             success: true,
-
             sessionId,
-
-            decartToken:
-                decartJson.apiKey
+            decartToken: decartJson.apiKey
         });
 
     } catch (err) {
-
-        console.log(
-            "❌ START SESSION ERROR:",
-            err.message
-        );
+        console.log("❌ START ERROR:", err.message);
 
         return res.status(500).json({
             success: false,
