@@ -5,10 +5,6 @@ import {
     getUserSession
 } from "../lib/session-store.js";
 
-import {
-    startSessionTimeout
-} from "../lib/session-monitor.js";
-
 const router = express.Router();
 
 router.post("/", async (req, res) => {
@@ -17,11 +13,15 @@ router.post("/", async (req, res) => {
 
         console.log("🟢 START SESSION HIT");
 
+        // ====================================
+        // GET TOKEN
+        // ====================================
+
         const { token } = req.body;
 
         if (!token) {
 
-            return res.status(401).json({
+            return res.status(400).json({
                 success: false,
                 message: "Missing token"
             });
@@ -63,7 +63,7 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // USER ACTIVE SESSION CHECK
+        // DUPLICATE SESSION CHECK
         // ====================================
 
         const existingSession =
@@ -103,37 +103,16 @@ router.post("/", async (req, res) => {
 
             sessionId,
             userId,
-
-            dbSeconds,
-            graceSeconds,
-            sessionDuration,
-
-            createdAt: Date.now(),
-
             closed: false
         });
 
-        // ====================================
-        // AUTO EXPIRE
-        // ====================================
-
-        startSessionTimeout(
-
-            sessionId,
-
-            sessionDuration * 1000,
-
-            async () => {
-
-                console.log(
-                    "🛑 AUTO REMOVE:",
-                    sessionId
-                );
-            }
+        console.log(
+            "💾 SESSION STORED:",
+            sessionId
         );
 
         // ====================================
-        // DE CART TOKEN
+        // DE CART API KEY
         // ====================================
 
         const decartApiKey =
@@ -209,14 +188,11 @@ router.post("/", async (req, res) => {
 
             sessionId,
 
-            sessionDuration,
-
             decartToken:
                 decartJson.apiKey
         });
 
-    }
-    catch (err) {
+    } catch (err) {
 
         console.log(
             "❌ START SESSION ERROR:",
