@@ -1,26 +1,17 @@
 import express from "express";
-import { supabase } from "../lib/supabase.js";
 
 import {
-    getSession,
-    updateSession,
-    deleteSession
+    getSession
 } from "../lib/session-store.js";
 
 import {
-    calculateBillableDuration,
-    calculateRemainingSeconds
-} from "../lib/billing.js";
-
-import {
-    clearSessionTimeout
-} from "../lib/session-monitor.js";
+    closeSession
+} from "../lib/session-manager.js";
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
     try {
-
         console.log("🛑 END SESSION HIT");
 
         const { sessionId } = req.body || {};
@@ -32,11 +23,8 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // ====================================
-        // GET SESSION
-        // ====================================
         const session = getSession(sessionId);
-        console.log("🧪 FULL SESSION:", session);
+
         if (!session) {
             return res.status(404).json({
                 success: false,
@@ -44,101 +32,19 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // ====================================
-        // DOUBLE STOP GUARD (ATOMIC STYLE)
-        // ====================================
         if (session.isEnding) {
-            console.log("⚠️ ALREADY ENDING:", sessionId);
-
             return res.json({
                 success: true,
                 message: "Already ending"
             });
         }
 
-        updateSession(sessionId, { isEnding: true });
+        // ✅ SINGLE SOURCE OF TRUTH
+        await closeSession(sessionId, "manual");
 
-        console.log("🔒 SESSION LOCKED:", sessionId);
-
-        // ====================================
-        // CALCULATE DURATION (RAW)
-        // ====================================
-        const rawDuration = calculateBillableDuration(session);
-
-        console.log("⏱ RAW DURATION:", rawDuration);
-
-        // ====================================
-        // GET USER
-        // ====================================
-        const { data: user, error } = await supabase
-            .from("users")
-            .select("remaining_seconds")
-            .eq("id", session.userId)
-            .single();
-
-        if (error || !user) {
-            console.log("❌ USER FETCH FAILED");
-
-            return res.status(500).json({
-                success: false,
-                message: "Failed to fetch user"
-            });
-        }
-
-        // ====================================
-        // APPLY BILLING
-        // ====================================
-
-        const billableDuration = rawDuration;
-
-        const updatedRemaining =
-            calculateRemainingSeconds(
-                user.remaining_seconds,
-                billableDuration
-            );
-
-        console.log("💰 BILLING CALC:", {
-            before: user.remaining_seconds,
-            billableDuration,
-            after: updatedRemaining
-        });
-
-        // ====================================
-        // UPDATE DB
-        // ====================================
-        const { error: updateError } = await supabase
-            .from("users")
-            .update({
-                remaining_seconds: updatedRemaining
-            })
-            .eq("id", session.userId);
-
-        if (updateError) {
-            console.log("❌ DB UPDATE FAILED");
-
-            return res.status(500).json({
-                success: false,
-                message: "DB update failed"
-            });
-        }
-
-        console.log("✅ DB UPDATED");
-
-        // ====================================
-        // CLEAN SESSION
-        // ====================================
-        deleteSession(sessionId);
-        clearSessionTimeout(sessionId);
-
-        console.log("🗑 SESSION DELETED");
-
-        // ====================================
-        // RESPONSE
-        // ====================================
         return res.json({
             success: true,
-            duration: billableDuration,
-            remainingSeconds: updatedRemaining
+            message: "Session closed"
         });
 
     } catch (err) {
