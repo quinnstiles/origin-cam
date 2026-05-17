@@ -1,5 +1,4 @@
 import express from "express";
-import { createSession, getUserSession } from "../lib/session-store.js";
 
 const router = express.Router();
 
@@ -9,7 +8,9 @@ router.post("/", async (req, res) => {
 
         const { token } = req.body;
 
-        // ❌ MUST HAVE TOKEN
+        // =========================
+        // VALIDATE TOKEN
+        // =========================
         if (!token) {
             return res.status(400).json({
                 success: false,
@@ -17,9 +18,6 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // ====================================
-        // DECODE USER
-        // ====================================
         let userId;
 
         try {
@@ -42,47 +40,21 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // ====================================
-        // SIMPLE SESSION CHECK
-        // ====================================
-        const existing = getUserSession(userId);
-
-        if (existing) {
-            console.log("⚠️ USER HAS ACTIVE SESSION");
-            return res.status(409).json({
-                success: false,
-                message: "Session already running"
-            });
-        }
-
-        // ====================================
-        // MINIMAL SESSION DATA
-        // ====================================
-        const sessionId = `session_${Date.now()}`;
-
-        const session = {
-            sessionId,
-            userId,
-            createdAt: Date.now(),
-            closed: false
-        };
-
-        createSession(session);
-
-        console.log("💾 SESSION CREATED:", sessionId);
-
-        // ====================================
-        // DE CART TOKEN (ONLY WHAT WE NEED)
-        // ====================================
+        // =========================
+        // DE CART KEY
+        // =========================
         const decartApiKey = process.env.DECART_API_KEY;
 
         if (!decartApiKey) {
             return res.status(500).json({
                 success: false,
-                message: "Missing Decart key"
+                message: "Missing Decart API key"
             });
         }
 
+        // =========================
+        // CREATE DECART TOKEN ONLY
+        // =========================
         const decartResponse = await fetch(
             "https://api.decart.ai/v1/client/tokens",
             {
@@ -100,23 +72,20 @@ router.post("/", async (req, res) => {
 
         const decartJson = await decartResponse.json();
 
-        if (!decartResponse.ok || !decartJson.apiKey) {
-            console.log("❌ DE CART ERROR:", decartJson);
+        console.log("🧠 DE CART RESPONSE:", decartJson);
 
+        if (!decartResponse.ok || !decartJson.apiKey) {
             return res.status(500).json({
                 success: false,
                 message: "Failed to create Decart token"
             });
         }
 
-        console.log("🧠 DE CART TOKEN READY");
-
-        // ====================================
-        // RESPONSE (CLEAN)
-        // ====================================
+        // =========================
+        // RETURN ONLY TOKEN
+        // =========================
         return res.json({
             success: true,
-            sessionId,
             decartToken: decartJson.apiKey
         });
 
