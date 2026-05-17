@@ -1,26 +1,21 @@
 import express from "express";
-
+import { supabase } from "../lib/supabase.js";
 import {
     createSession,
-    getUserSession
+    getUserSession,
+    clearUserSession
 } from "../lib/session-store.js";
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
-
     try {
 
         console.log("🟢 START SESSION HIT");
 
         const { token } = req.body;
 
-        // ====================================
-        // TOKEN REQUIRED
-        // ====================================
-
         if (!token) {
-
             return res.status(400).json({
                 success: false,
                 message: "Missing token"
@@ -28,164 +23,118 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // DECODE USER
+        // DECODE USER ID
         // ====================================
-
-        let userId = null;
+        let userId;
 
         try {
-
             const payload = JSON.parse(
-                Buffer
-                    .from(
-                        token.split(".")[1],
-                        "base64"
-                    )
-                    .toString()
+                Buffer.from(token.split(".")[1], "base64").toString()
             );
 
             userId = payload.sub;
-
         } catch {
-
             return res.status(400).json({
                 success: false,
                 message: "Invalid token"
             });
         }
 
-        if (!userId) {
+        // ====================================
+        // GET USER TIME
+        // ====================================
+        const { data: user, error } = await supabase
+            .from("users")
+            .select("remaining_seconds")
+            .eq("id", userId)
+            .single();
 
-            return res.status(400).json({
+        if (error || !user) {
+            return res.status(500).json({
                 success: false,
-                message: "Missing userId"
+                message: "User fetch failed"
             });
         }
 
-        // ====================================
-        // ACTIVE SESSION CHECK
-        // ====================================
+        const dbSeconds = user.remaining_seconds || 0;
 
-        const existingSession =
-            getUserSession(userId);
-
-        if (existingSession) {
-
-            console.log(
-                "⚠️ ACTIVE SESSION EXISTS"
-            );
-
-            return res.status(409).json({
+        if (dbSeconds <= 0) {
+            return res.status(403).json({
                 success: false,
-                message: "Session already running"
+                message: "No time left"
             });
         }
 
+        const sessionDuration = dbSeconds + 5; // grace
+
+        const sessionId = `session_${Date.now()}`;
+
         // ====================================
-        // CREATE SESSION
+        // 🔥 FORCE CLEAR OLD SESSION (IMPORTANT)
         // ====================================
+        clearUserSession(userId);
 
-        const sessionId =
-            `session_${Date.now()}`;
+        console.log("🧹 OLD SESSION CLEARED (if existed)");
 
-        createSession({
-
+        // ====================================
+        // CREATE NEW SESSION
+        // ====================================
+        const session = {
             sessionId,
-
             userId,
-
+            dbSeconds,
+            sessionDuration,
             createdAt: Date.now(),
+            isEnding: false
+        };
 
-            closed: false
-        });
+        createSession(session);
 
-        console.log(
-            "💾 SESSION CREATED:",
-            sessionId
+        console.log("💾 SESSION CREATED:", sessionId);
+
+        // ====================================
+        // DECART TOKEN
+        // ====================================
+        const decartResponse = await fetch(
+            "https://api.decart.ai/v1/client/tokens",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": process.env.DECART_API_KEY
+                },
+                body: JSON.stringify({
+                    expiresIn: 60,
+                    allowedModels: ["lucy-2"],
+                    constraints: {
+                        realtime: {
+                            maxSessionDuration: sessionDuration
+                        }
+                    }
+                })
+            }
         );
 
-        // ====================================
-        // CREATE DE CART TOKEN
-        // ====================================
+        const decartJson = await decartResponse.json();
 
-        const decartApiKey =
-            process.env.DECART_API_KEY;
-
-        if (!decartApiKey) {
-
+        if (!decartResponse.ok || !decartJson?.apiKey) {
             return res.status(500).json({
                 success: false,
-                message:
-                    "Missing DE CART key"
+                message: "Decart token failed"
             });
         }
 
-        const decartResponse =
-            await fetch(
-                "https://api.decart.ai/v1/client/tokens",
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json",
-
-                        "x-api-key":
-                            decartApiKey
-                    },
-
-                    body: JSON.stringify({
-
-                        expiresIn: 120,
-
-                        allowedModels: [
-                            "lucy-2"
-                        ]
-                    })
-                }
-            );
-
-        const decartJson =
-            await decartResponse.json();
-
-        console.log(
-            "🧠 DE CART RESPONSE:",
-            decartJson
-        );
-
-        if (
-            !decartResponse.ok ||
-            !decartJson.apiKey
-        ) {
-
-            return res.status(500).json({
-                success: false,
-                message:
-                    "Failed creating DE CART token"
-            });
-        }
-
-        // ====================================
-        // RESPONSE
-        // ====================================
+        console.log("🧠 DE CART TOKEN READY");
 
         return res.json({
-
             success: true,
-
             sessionId,
-
-            decartToken:
-                decartJson.apiKey
+            sessionDuration,
+            decartToken: decartJson.apiKey
         });
 
-    }
-    catch (err) {
-
-        console.log(
-            "❌ START SESSION ERROR:",
-            err.message
-        );
+    } catch (err) {
+        console.log("❌ START ERROR:", err.message);
 
         return res.status(500).json({
             success: false,
