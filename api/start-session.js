@@ -1,5 +1,14 @@
 import express from "express";
 
+import {
+    createSession,
+    getUserSession
+} from "../lib/session-store.js";
+
+import {
+    startSessionTimeout
+} from "../lib/session-monitor.js";
+
 const router = express.Router();
 
 router.post("/", async (req, res) => {
@@ -8,12 +17,129 @@ router.post("/", async (req, res) => {
 
         console.log("🟢 START SESSION HIT");
 
+        const { token } = req.body;
+
+        if (!token) {
+
+            return res.status(401).json({
+                success: false,
+                message: "Missing token"
+            });
+        }
+
+        // ====================================
+        // DECODE USER
+        // ====================================
+
+        let userId = null;
+
+        try {
+
+            const payload = JSON.parse(
+                Buffer
+                    .from(
+                        token.split(".")[1],
+                        "base64"
+                    )
+                    .toString()
+            );
+
+            userId = payload.sub;
+
+        } catch {
+
+            return res.status(400).json({
+                success: false,
+                message: "Invalid token"
+            });
+        }
+
+        if (!userId) {
+
+            return res.status(400).json({
+                success: false,
+                message: "Missing userId"
+            });
+        }
+
+        // ====================================
+        // USER ACTIVE SESSION CHECK
+        // ====================================
+
+        const existingSession =
+            getUserSession(userId);
+
+        if (existingSession) {
+
+            console.log(
+                "⚠️ USER ALREADY ACTIVE"
+            );
+
+            return res.status(409).json({
+                success: false,
+                message: "Session already running"
+            });
+        }
+
+        // ====================================
+        // SESSION CONFIG
+        // ====================================
+
+        const dbSeconds = 60;
+
+        const graceSeconds = 5;
+
+        const sessionDuration =
+            dbSeconds + graceSeconds;
+
+        const sessionId =
+            `session_${Date.now()}`;
+
+        // ====================================
+        // STORE SESSION
+        // ====================================
+
+        createSession({
+
+            sessionId,
+            userId,
+
+            dbSeconds,
+            graceSeconds,
+            sessionDuration,
+
+            createdAt: Date.now(),
+
+            closed: false
+        });
+
+        // ====================================
+        // AUTO EXPIRE
+        // ====================================
+
+        startSessionTimeout(
+
+            sessionId,
+
+            sessionDuration * 1000,
+
+            async () => {
+
+                console.log(
+                    "🛑 AUTO REMOVE:",
+                    sessionId
+                );
+            }
+        );
+
+        // ====================================
+        // DE CART TOKEN
+        // ====================================
+
         const decartApiKey =
             process.env.DECART_API_KEY;
 
         if (!decartApiKey) {
-
-            console.log("❌ Missing DE CART key");
 
             return res.status(500).json({
                 success: false,
@@ -22,7 +148,7 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // CREATE SHORT-LIVED CLIENT TOKEN
+        // CREATE CLIENT TOKEN
         // ====================================
 
         const decartResponse = await fetch(
@@ -31,8 +157,11 @@ router.post("/", async (req, res) => {
                 method: "POST",
 
                 headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": decartApiKey
+                    "Content-Type":
+                        "application/json",
+
+                    "x-api-key":
+                        decartApiKey
                 },
 
                 body: JSON.stringify({
@@ -45,7 +174,8 @@ router.post("/", async (req, res) => {
 
                     constraints: {
                         realtime: {
-                            maxSessionDuration: 60
+                            maxSessionDuration:
+                                sessionDuration
                         }
                     }
                 })
@@ -64,19 +194,29 @@ router.post("/", async (req, res) => {
 
             return res.status(500).json({
                 success: false,
-                message: "Failed creating token"
+                message:
+                    "Failed creating DE CART token"
             });
         }
+
+        // ====================================
+        // RESPONSE
+        // ====================================
 
         return res.json({
 
             success: true,
 
+            sessionId,
+
+            sessionDuration,
+
             decartToken:
                 decartJson.apiKey
         });
 
-    } catch (err) {
+    }
+    catch (err) {
 
         console.log(
             "❌ START SESSION ERROR:",

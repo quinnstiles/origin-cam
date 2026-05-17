@@ -17,8 +17,7 @@ import authRoute
 import startSessionRoute
     from "./api/start-session.js";
 
-import heartbeatRoute
-    from "./api/heartbeat.js";
+
 
 import endSessionRoute
     from "./api/end-session.js";
@@ -63,10 +62,7 @@ app.use(
     startSessionRoute
 );
 
-app.use(
-    "/api/heartbeat",
-    heartbeatRoute
-);
+
 
 app.use(
     "/api/end-session",

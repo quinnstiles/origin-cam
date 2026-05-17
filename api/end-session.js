@@ -1,54 +1,67 @@
 import express from "express";
 
 import {
-    getSession
+    getSession,
+    removeSession
 } from "../lib/session-store.js";
 
 import {
-    closeSession
-} from "../lib/session-manager.js";
+    clearSessionTimeout
+} from "../lib/session-monitor.js";
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
-    try {
-        console.log("🛑 END SESSION HIT");
 
-        const { sessionId } = req.body || {};
+    try {
+
+        console.log(
+            "🛑 END SESSION HIT"
+        );
+
+        const { sessionId } =
+            req.body;
 
         if (!sessionId) {
+
             return res.status(400).json({
                 success: false,
                 message: "Missing sessionId"
             });
         }
 
-        const session = getSession(sessionId);
+        const session =
+            getSession(sessionId);
 
         if (!session) {
-            return res.status(404).json({
-                success: false,
-                message: "Session not found"
-            });
-        }
 
-        if (session.isEnding) {
             return res.json({
                 success: true,
-                message: "Already ending"
+                message: "Already closed"
             });
         }
 
-        // ✅ SINGLE SOURCE OF TRUTH
-        await closeSession(sessionId, "manual");
+        session.closed = true;
+
+        clearSessionTimeout(
+            sessionId
+        );
+
+        removeSession(
+            sessionId
+        );
 
         return res.json({
-            success: true,
-            message: "Session closed"
+            success: true
         });
 
-    } catch (err) {
-        console.log("❌ END SESSION ERROR:", err.message);
+    }
+    catch (err) {
+
+        console.log(
+            "❌ END SESSION ERROR:",
+            err.message
+        );
 
         return res.status(500).json({
             success: false,
