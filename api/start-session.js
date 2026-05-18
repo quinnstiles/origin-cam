@@ -2,7 +2,6 @@ import express from "express";
 import { supabase } from "../lib/supabase.js";
 import {
     createSession,
-    getUserSession,
     clearUserSession
 } from "../lib/session-store.js";
 
@@ -65,25 +64,38 @@ router.post("/", async (req, res) => {
             });
         }
 
-        const sessionDuration = dbSeconds + 5; // grace
+        // ====================================
+        // GRACE TIME (SERVER ONLY)
+        // ====================================
+        const graceSeconds =
+            Number(process.env.SESSION_GRACE_SECONDS || 0);
+
+        // ====================================
+        // SESSION DURATION (DECART ONLY = DB TIME)
+        // ====================================
+        const sessionDuration = dbSeconds;
 
         const sessionId = `session_${Date.now()}`;
 
         // ====================================
-        // 🔥 FORCE CLEAR OLD SESSION (IMPORTANT)
+        // FORCE CLEAR OLD SESSION
         // ====================================
         clearUserSession(userId);
 
         console.log("🧹 OLD SESSION CLEARED (if existed)");
 
         // ====================================
-        // CREATE NEW SESSION
+        // CREATE SESSION
         // ====================================
         const session = {
             sessionId,
             userId,
+
             dbSeconds,
+            graceSeconds,
+
             sessionDuration,
+
             createdAt: Date.now(),
             isEnding: false
         };
@@ -93,7 +105,7 @@ router.post("/", async (req, res) => {
         console.log("💾 SESSION CREATED:", sessionId);
 
         // ====================================
-        // DECART TOKEN
+        // DECART TOKEN REQUEST
         // ====================================
         const decartResponse = await fetch(
             "https://api.decart.ai/v1/client/tokens",
@@ -108,7 +120,7 @@ router.post("/", async (req, res) => {
                     allowedModels: ["lucy-2"],
                     constraints: {
                         realtime: {
-                            maxSessionDuration: sessionDuration
+                            maxSessionDuration: dbSeconds
                         }
                     }
                 })
@@ -130,6 +142,7 @@ router.post("/", async (req, res) => {
             success: true,
             sessionId,
             sessionDuration,
+            graceSeconds, // optional debug visibility
             decartToken: decartJson.apiKey
         });
 
