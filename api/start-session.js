@@ -101,19 +101,24 @@ router.post("/", async (req, res) => {
             userId,
             createdAt: Date.now(),
             dbSeconds,
-            graceSeconds // Now accurately saving the dynamic environment variable value
+            graceSeconds,
+            timerId: null // We will populate this in a moment
         };
-
-        createSession(newSession);
 
         // ====================================
         // 6. AUTHORITATIVE SERVER-SIDE TIMEOUT
         // ====================================
         const serverTimeoutDuration = (dbSeconds + graceSeconds) * 1000;
-        setTimeout(async () => {
+
+        const timerId = setTimeout(async () => {
             console.log(`⏰ Server-side absolute timeout reached for session: ${sessionId}`);
             await finalizeSession(sessionId, "timeout");
         }, serverTimeoutDuration);
+
+        // Bind the timer directly to the session memory block before saving
+        newSession.timerId = timerId;
+
+        createSession(newSession);
 
         // ====================================
         // 7. RETURN TO UNTRUSTED NODE/C++
