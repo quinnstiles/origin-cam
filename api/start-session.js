@@ -17,7 +17,6 @@ router.post("/", async (req, res) => {
         // ====================================
         // 1. AUTHENTICATE & GET USER ID
         // ====================================
-        // Replace this with your exact JWT decoding/Supabase auth verification logic
         const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
         if (authError || !user) {
@@ -26,25 +25,36 @@ router.post("/", async (req, res) => {
         const userId = user.id;
 
         // ====================================
-        // 2. AUTHORITATIVE SESSION CONFLICT CHECK (BULLETPROOF DEV VERSION)
+        // 2. AUTHORITATIVE SESSION CONFLICT CHECK
         // ====================================
         const existingSession = getUserSession(userId);
 
         if (existingSession) {
             const now = Date.now();
-            const totalAllowedDuration = (existingSession.dbSeconds + existingSession.graceSeconds) * 1000;
-            const absoluteExpirationTime = existingSession.createdAt + totalAllowedDuration;
+
+            // Explicitly cast to Numbers to prevent string concatenation bugs
+            const dbSecs = Number(existingSession.dbSeconds || 0);
+            const graceSecs = Number(existingSession.graceSeconds || 0);
+            const createdAtMs = Number(existingSession.createdAt);
+
+            // Your exact logic: convert total duration to milliseconds
+            const totalAllowedDurationMs = (dbSecs + graceSecs) * 1000;
+            const absoluteExpirationTime = createdAtMs + totalAllowedDurationMs;
 
             if (now < absoluteExpirationTime) {
-                // Legitimate overlap (e.g. app restarted quickly). Force clean it!
-                console.log(`🔄 Interrupted active session ${existingSession.sessionId}. Force-finalizing safely.`);
-                await finalizeSession(existingSession.sessionId, "manual");
+                // Legitimate Active Session: The duration hasn't passed yet.
+                // Strict Protection: Block duplicate/concurrent streaming attempts.
+                return res.status(400).json({
+                    success: false,
+                    message: "Active session already running. Close current session first."
+                });
             } else {
-                // Stale session found. Clean it up as a timeout.
-                console.log(`🧹 Stale session ${existingSession.sessionId} found during startup. Auto-finalizing.`);
+                // Long Dead Session: Time has completely passed!
+                console.log(`🧹 Stale session ${existingSession.sessionId} exceeded its lifespan. Auto-finalizing ledger.`);
                 await finalizeSession(existingSession.sessionId, "timeout");
             }
         }
+
         // ====================================
         // 3. FETCH & VERIFY BALANCE FROM DATABASE
         // ====================================
@@ -58,8 +68,10 @@ router.post("/", async (req, res) => {
             return res.status(500).json({ success: false, message: "Could not fetch user billing data" });
         }
 
-        const dbSeconds = dbUser.remaining_seconds;
-        const graceSeconds = 15; // 15-second server grace allowance for spin-up
+        const dbSeconds = Number(dbUser.remaining_seconds || 0);
+
+        // 🛠️ FIX: Read dynamically from .env and cast to an intentional Number (Fallback to 15 if missing)
+        const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 5);
 
         if (dbSeconds <= 0) {
             return res.status(403).json({ success: false, message: "Insufficient balance. Please recharge." });
@@ -98,7 +110,7 @@ router.post("/", async (req, res) => {
             userId,
             createdAt: Date.now(),
             dbSeconds,
-            graceSeconds
+            graceSeconds // Now accurately saving the dynamic environment variable value
         };
 
         createSession(newSession);
@@ -106,7 +118,6 @@ router.post("/", async (req, res) => {
         // ====================================
         // 6. AUTHORITATIVE SERVER-SIDE TIMEOUT
         // ====================================
-        // The server acts as the executioner if the client vanishes or stays connected too long.
         const serverTimeoutDuration = (dbSeconds + graceSeconds) * 1000;
         setTimeout(async () => {
             console.log(`⏰ Server-side absolute timeout reached for session: ${sessionId}`);
