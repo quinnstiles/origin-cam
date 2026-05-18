@@ -2,8 +2,7 @@ import express from "express";
 
 import {
     getSession,
-    deleteSession,
-    updateSession
+    deleteSession
 } from "../lib/session-store.js";
 
 import { finalizeSession } from "../lib/finalizeSession.js";
@@ -27,7 +26,7 @@ router.post("/", async (req, res) => {
 
         const session = getSession(sessionId);
 
-        // already gone
+        // already gone or expired
         if (!session) {
             return res.json({
                 success: true,
@@ -35,23 +34,13 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // prevent double execution
-        if (session.isEnding) {
-            return res.json({
-                success: true,
-                message: "Already ending"
-            });
-        }
+        // ====================================
+        // SINGLE FINALIZATION PATH
+        // ====================================
 
-        // mark as ending (prevents race conditions)
-        updateSession(sessionId, {
-            isEnding: true
-        });
-
-        // SINGLE SOURCE OF TRUTH
         await finalizeSession(sessionId, "manual");
 
-        // ensure cleanup (safety fallback)
+        // safety cleanup (final guard)
         deleteSession(sessionId);
 
         return res.json({

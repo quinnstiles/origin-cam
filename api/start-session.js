@@ -2,9 +2,7 @@ import express from "express";
 import { supabase } from "../lib/supabase.js";
 import {
     createSession,
-    getUserSession,
-    updateSession,
-    deleteSession
+    clearUserSession
 } from "../lib/session-store.js";
 import { finalizeSession } from "../lib/finalizeSession.js";
 
