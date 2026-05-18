@@ -25,32 +25,23 @@ router.post("/", async (req, res) => {
         const userId = user.id;
 
         // ====================================
-        // 2. AUTHORITATIVE SESSION CONFLICT CHECK
+        // 2. AUTHORITATIVE SESSION CONFLICT CHECK (SERIALIZED CLEANUP)
         // ====================================
         const existingSession = getUserSession(userId);
 
         if (existingSession) {
             const now = Date.now();
-
-            // Explicitly cast to Numbers to prevent string concatenation bugs
-            const dbSecs = Number(existingSession.dbSeconds || 0);
-            const graceSecs = Number(existingSession.graceSeconds || 0);
-            const createdAtMs = Number(existingSession.createdAt);
-
-            // Your exact logic: convert total duration to milliseconds
-            const totalAllowedDurationMs = (dbSecs + graceSecs) * 1000;
-            const absoluteExpirationTime = createdAtMs + totalAllowedDurationMs;
+            const totalAllowedDuration = (existingSession.dbSeconds + existingSession.graceSeconds) * 1000;
+            const absoluteExpirationTime = existingSession.createdAt + totalAllowedDuration;
 
             if (now < absoluteExpirationTime) {
-                // Legitimate Active Session: The duration hasn't passed yet.
-                // Strict Protection: Block duplicate/concurrent streaming attempts.
-                return res.status(400).json({
-                    success: false,
-                    message: "Active session already running. Close current session first."
-                });
+                // Force-finalize the active session and CRITICAL: await it!
+                // This forces Node/Server to wait until the DB write and memory clear are 100% complete.
+                console.log(`🔄 Active session ${existingSession.sessionId} interrupted by new start request. Force-finalizing sequentially.`);
+                await finalizeSession(existingSession.sessionId, "manual");
             } else {
-                // Long Dead Session: Time has completely passed!
-                console.log(`🧹 Stale session ${existingSession.sessionId} exceeded its lifespan. Auto-finalizing ledger.`);
+                // Session is stale! Clean it up completely before moving forward
+                console.log(`🧹 Stale session ${existingSession.sessionId} found during startup. Auto-finalizing.`);
                 await finalizeSession(existingSession.sessionId, "timeout");
             }
         }
