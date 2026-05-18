@@ -110,13 +110,18 @@ router.post("/", async (req, res) => {
         // ====================================
         const serverTimeoutDuration = (dbSeconds + graceSeconds) * 1000;
 
-        const timerId = setTimeout(async () => {
-            console.log(`⏰ Server-side absolute timeout reached for session: ${sessionId}`);
+        setTimeout(async () => {
+            // Check the authoritative memory map right as the timer wakes up
+            const sessionVerification = getSession(sessionId);
+
+            if (!sessionVerification) {
+                console.log(`⏰ Stale safety timer woke up for ${sessionId}, but session is already long dead. Ignoring duty.`);
+                return;
+            }
+
+            console.log(`⏰ Server-side absolute timeout reached for active session: ${sessionId}`);
             await finalizeSession(sessionId, "timeout");
         }, serverTimeoutDuration);
-
-        // Bind the timer directly to the session memory block before saving
-        newSession.timerId = timerId;
 
         createSession(newSession);
 
