@@ -2,8 +2,11 @@ import express from "express";
 import { supabase } from "../lib/supabase.js";
 import {
     createSession,
-    clearUserSession
+    getUserSession,
+    updateSession,
+    deleteSession
 } from "../lib/session-store.js";
+import { finalizeSession } from "../lib/finalizeSession.js";
 
 const router = express.Router();
 
@@ -40,6 +43,30 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
+        // CHECK EXISTING SESSION (CLEAN STALE FIRST)
+        // ====================================
+        const existing = getUserSession(userId);
+
+        if (existing) {
+
+            const now = Date.now();
+
+            // safety fallback: if expired but still in memory → force cleanup
+            if (now >= existing.expiresAt) {
+                console.log("🧹 CLEANING STALE SESSION:", existing.sessionId);
+
+                await finalizeSession(existing.sessionId, "auto-cleanup");
+
+                deleteSession(existing.sessionId);
+            } else {
+                return res.status(409).json({
+                    success: false,
+                    message: "Session already running"
+                });
+            }
+        }
+
+        // ====================================
         // GET USER TIME
         // ====================================
         const { data: user, error } = await supabase
@@ -65,27 +92,21 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // GRACE TIME (SERVER ONLY)
+        // GRACE TIME (SERVER ONLY - NOT DECART)
         // ====================================
-        const graceSeconds =
-            Number(process.env.SESSION_GRACE_SECONDS || 0);
+        const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 0);
+
+        const createdAt = Date.now();
+
+        const sessionDuration = dbSeconds + graceSeconds;
+
+        const expiresAt =
+            createdAt + sessionDuration * 1000;
+
+        const sessionId = `session_${createdAt}`;
 
         // ====================================
-        // SESSION DURATION (DECART ONLY = DB TIME)
-        // ====================================
-        const sessionDuration = dbSeconds;
-
-        const sessionId = `session_${Date.now()}`;
-
-        // ====================================
-        // FORCE CLEAR OLD SESSION
-        // ====================================
-        clearUserSession(userId);
-
-        console.log("🧹 OLD SESSION CLEARED (if existed)");
-
-        // ====================================
-        // CREATE SESSION
+        // CREATE SESSION (SOURCE OF TRUTH)
         // ====================================
         const session = {
             sessionId,
@@ -95,8 +116,9 @@ router.post("/", async (req, res) => {
             graceSeconds,
 
             sessionDuration,
+            createdAt,
+            expiresAt,
 
-            createdAt: Date.now(),
             isEnding: false
         };
 
@@ -105,7 +127,16 @@ router.post("/", async (req, res) => {
         console.log("💾 SESSION CREATED:", sessionId);
 
         // ====================================
-        // DECART TOKEN REQUEST
+        // HARD TIMEOUT (GUARANTEED CLEANUP)
+        // ====================================
+        const timeoutMs = Math.max(0, expiresAt - Date.now());
+
+        setTimeout(() => {
+            finalizeSession(sessionId, "timeout");
+        }, timeoutMs);
+
+        // ====================================
+        // DECART TOKEN (DB TIME ONLY)
         // ====================================
         const decartResponse = await fetch(
             "https://api.decart.ai/v1/client/tokens",
@@ -138,11 +169,14 @@ router.post("/", async (req, res) => {
 
         console.log("🧠 DE CART TOKEN READY");
 
+        // ====================================
+        // RESPONSE
+        // ====================================
         return res.json({
             success: true,
             sessionId,
-            sessionDuration,
-            graceSeconds, // optional debug visibility
+            sessionDuration: dbSeconds,
+            graceSeconds,
             decartToken: decartJson.apiKey
         });
 

@@ -2,12 +2,11 @@ import express from "express";
 
 import {
     getSession,
-    deleteSession
+    deleteSession,
+    updateSession
 } from "../lib/session-store.js";
 
-import {
-    clearSessionTimeout
-} from "../lib/session-monitor.js";
+import { finalizeSession } from "../lib/finalizeSession.js";
 
 const router = express.Router();
 
@@ -15,53 +14,53 @@ router.post("/", async (req, res) => {
 
     try {
 
-        console.log(
-            "🛑 END SESSION HIT"
-        );
+        console.log("🛑 END SESSION HIT");
 
-        const { sessionId } =
-            req.body;
+        const { sessionId } = req.body || {};
 
         if (!sessionId) {
-
             return res.status(400).json({
                 success: false,
                 message: "Missing sessionId"
             });
         }
 
-        const session =
-            getSession(sessionId);
+        const session = getSession(sessionId);
 
+        // already gone
         if (!session) {
-
             return res.json({
                 success: true,
                 message: "Already closed"
             });
         }
 
-        session.closed = true;
+        // prevent double execution
+        if (session.isEnding) {
+            return res.json({
+                success: true,
+                message: "Already ending"
+            });
+        }
 
-        clearSessionTimeout(
-            sessionId
-        );
+        // mark as ending (prevents race conditions)
+        updateSession(sessionId, {
+            isEnding: true
+        });
 
-        removeSession(
-            sessionId
-        );
+        // SINGLE SOURCE OF TRUTH
+        await finalizeSession(sessionId, "manual");
+
+        // ensure cleanup (safety fallback)
+        deleteSession(sessionId);
 
         return res.json({
             success: true
         });
 
-    }
-    catch (err) {
+    } catch (err) {
 
-        console.log(
-            "❌ END SESSION ERROR:",
-            err.message
-        );
+        console.log("❌ END SESSION ERROR:", err.message);
 
         return res.status(500).json({
             success: false,

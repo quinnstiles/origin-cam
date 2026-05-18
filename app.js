@@ -26,9 +26,6 @@ import endSessionRoute
 // HEARTBEAT MONITOR
 // ========================================
 
-import {
-    startHeartbeatMonitor
-} from "./lib/heartbeat-monitor.js";
 
 // ========================================
 // APP
@@ -86,7 +83,6 @@ app.get("/", (req, res) => {
 // START HEARTBEAT MONITOR
 // ========================================
 
-startHeartbeatMonitor();
 
 // ========================================
 // SERVER
