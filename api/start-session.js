@@ -26,7 +26,7 @@ router.post("/", async (req, res) => {
         const userId = user.id;
 
         // ====================================
-        // 2. AUTHORITATIVE SESSION CONFLICT CHECK
+        // 2. AUTHORITATIVE SESSION CONFLICT CHECK (BULLETPROOF DEV VERSION)
         // ====================================
         const existingSession = getUserSession(userId);
 
@@ -36,18 +36,15 @@ router.post("/", async (req, res) => {
             const absoluteExpirationTime = existingSession.createdAt + totalAllowedDuration;
 
             if (now < absoluteExpirationTime) {
-                // Session is legitimately active. Reject new concurrency.
-                return res.status(400).json({
-                    success: false,
-                    message: "Active session already running. Close current session first."
-                });
+                // Legitimate overlap (e.g. app restarted quickly). Force clean it!
+                console.log(`🔄 Interrupted active session ${existingSession.sessionId}. Force-finalizing safely.`);
+                await finalizeSession(existingSession.sessionId, "manual");
             } else {
-                // Session is stale! Force a clean finalization to update DB and clear memory
+                // Stale session found. Clean it up as a timeout.
                 console.log(`🧹 Stale session ${existingSession.sessionId} found during startup. Auto-finalizing.`);
                 await finalizeSession(existingSession.sessionId, "timeout");
             }
         }
-
         // ====================================
         // 3. FETCH & VERIFY BALANCE FROM DATABASE
         // ====================================
