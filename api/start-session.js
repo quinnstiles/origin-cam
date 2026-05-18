@@ -1,15 +1,24 @@
 import express from "express";
 import { supabase } from "../lib/supabase.js";
+
 import {
     createSession,
-    clearUserSession,
-    getUserSession
+    getUserSession,
+    deleteSession
 } from "../lib/session-store.js";
-import { finalizeSession } from "../lib/finalizeSession.js";
+
+import {
+    startSessionTimeout
+} from "../lib/session-monitor.js";
+
+import {
+    finalizeSession
+} from "../lib/finalizeSession.js";
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
+
     try {
 
         console.log("🟢 START SESSION HIT");
@@ -17,6 +26,7 @@ router.post("/", async (req, res) => {
         const { token } = req.body;
 
         if (!token) {
+
             return res.status(400).json({
                 success: false,
                 message: "Missing token"
@@ -24,66 +34,88 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // DECODE USER ID
+        // DECODE USER
         // ====================================
-        let userId;
+
+        let userId = null;
 
         try {
+
             const payload = JSON.parse(
-                Buffer.from(token.split(".")[1], "base64").toString()
+                Buffer
+                    .from(
+                        token.split(".")[1],
+                        "base64"
+                    )
+                    .toString()
             );
 
             userId = payload.sub;
+
         } catch {
+
             return res.status(400).json({
                 success: false,
                 message: "Invalid token"
             });
         }
 
+        if (!userId) {
+
+            return res.status(400).json({
+                success: false,
+                message: "Missing userId"
+            });
+        }
+
         // ====================================
-        // CHECK EXISTING SESSION (CLEAN STALE FIRST)
+        // FORCE CLOSE EXISTING SESSION
         // ====================================
-        const existing = getUserSession(userId);
 
-        if (existing) {
+        const existingSession =
+            getUserSession(userId);
 
-            const now = Date.now();
+        if (existingSession) {
 
-            // safety fallback: if expired but still in memory → force cleanup
-            if (now >= existing.expiresAt) {
-                console.log("🧹 CLEANING STALE SESSION:", existing.sessionId);
+            console.log(
+                "⚠️ OVERRIDING OLD SESSION:",
+                existingSession.sessionId
+            );
 
-                await finalizeSession(existing.sessionId, "auto-cleanup");
+            await finalizeSession(
+                existingSession.sessionId,
+                "override"
+            );
 
-                deleteSession(existing.sessionId);
-            } else {
-                return res.status(409).json({
-                    success: false,
-                    message: "Session already running"
-                });
-            }
+            deleteSession(
+                existingSession.sessionId
+            );
         }
 
         // ====================================
         // GET USER TIME
         // ====================================
-        const { data: user, error } = await supabase
-            .from("users")
-            .select("remaining_seconds")
-            .eq("id", userId)
-            .single();
+
+        const { data: user, error } =
+            await supabase
+                .from("users")
+                .select("remaining_seconds")
+                .eq("id", userId)
+                .single();
 
         if (error || !user) {
+
             return res.status(500).json({
                 success: false,
                 message: "User fetch failed"
             });
         }
 
-        const dbSeconds = user.remaining_seconds || 0;
+        const dbSeconds =
+            user.remaining_seconds || 0;
 
         if (dbSeconds <= 0) {
+
             return res.status(403).json({
                 success: false,
                 message: "No time left"
@@ -91,23 +123,31 @@ router.post("/", async (req, res) => {
         }
 
         // ====================================
-        // GRACE TIME (SERVER ONLY - NOT DECART)
+        // TIME
         // ====================================
-        const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 0);
 
-        const createdAt = Date.now();
+        const graceSeconds =
+            Number(
+                process.env
+                    .SESSION_GRACE_SECONDS || 0
+            );
 
-        const sessionDuration = dbSeconds + graceSeconds;
+        const sessionDuration =
+            dbSeconds;
 
         const expiresAt =
-            createdAt + sessionDuration * 1000;
-
-        const sessionId = `session_${createdAt}`;
+            Date.now()
+            + ((dbSeconds + graceSeconds) * 1000);
 
         // ====================================
-        // CREATE SESSION (SOURCE OF TRUTH)
+        // SESSION
         // ====================================
-        const session = {
+
+        const sessionId =
+            `session_${Date.now()}`;
+
+        createSession({
+
             sessionId,
             userId,
 
@@ -115,72 +155,117 @@ router.post("/", async (req, res) => {
             graceSeconds,
 
             sessionDuration,
-            createdAt,
+
+            createdAt: Date.now(),
+
             expiresAt,
 
             isEnding: false
-        };
+        });
 
-        createSession(session);
-
-        console.log("💾 SESSION CREATED:", sessionId);
-
-        // ====================================
-        // HARD TIMEOUT (GUARANTEED CLEANUP)
-        // ====================================
-        const timeoutMs = Math.max(0, expiresAt - Date.now());
-
-        setTimeout(() => {
-            finalizeSession(sessionId, "timeout");
-        }, timeoutMs);
+        console.log(
+            "💾 SESSION CREATED:",
+            sessionId
+        );
 
         // ====================================
-        // DECART TOKEN (DB TIME ONLY)
+        // SERVER TIMEOUT
         // ====================================
-        const decartResponse = await fetch(
-            "https://api.decart.ai/v1/client/tokens",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": process.env.DECART_API_KEY
-                },
-                body: JSON.stringify({
-                    expiresIn: 60,
-                    allowedModels: ["lucy-2"],
-                    constraints: {
-                        realtime: {
-                            maxSessionDuration: dbSeconds
-                        }
-                    }
-                })
+
+        startSessionTimeout(
+
+            sessionId,
+
+            (dbSeconds + graceSeconds)
+            * 1000,
+
+            async () => {
+
+                await finalizeSession(
+                    sessionId,
+                    "timeout"
+                );
             }
         );
 
-        const decartJson = await decartResponse.json();
+        // ====================================
+        // DE CART TOKEN
+        // ====================================
 
-        if (!decartResponse.ok || !decartJson?.apiKey) {
+        const decartResponse =
+            await fetch(
+                "https://api.decart.ai/v1/client/tokens",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+
+                        "x-api-key":
+                            process.env
+                                .DECART_API_KEY
+                    },
+
+                    body: JSON.stringify({
+
+                        expiresIn: 60,
+
+                        allowedModels: [
+                            "lucy-2"
+                        ],
+
+                        constraints: {
+                            realtime: {
+                                maxSessionDuration:
+                                    dbSeconds
+                            }
+                        }
+                    })
+                }
+            );
+
+        const decartJson =
+            await decartResponse.json();
+
+        if (
+            !decartResponse.ok
+            || !decartJson?.apiKey
+        ) {
+
             return res.status(500).json({
                 success: false,
-                message: "Decart token failed"
+                message:
+                    "Decart token failed"
             });
         }
 
-        console.log("🧠 DE CART TOKEN READY");
+        console.log(
+            "🧠 DE CART TOKEN READY"
+        );
 
         // ====================================
         // RESPONSE
         // ====================================
+
         return res.json({
+
             success: true,
+
             sessionId,
-            sessionDuration: dbSeconds,
-            graceSeconds,
-            decartToken: decartJson.apiKey
+
+            sessionDuration,
+
+            decartToken:
+                decartJson.apiKey
         });
 
     } catch (err) {
-        console.log("❌ START ERROR:", err.message);
+
+        console.log(
+            "❌ START ERROR:",
+            err.message
+        );
 
         return res.status(500).json({
             success: false,
