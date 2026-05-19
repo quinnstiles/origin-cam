@@ -9,15 +9,12 @@ router.post("/", async (req, res) => {
     try {
         console.log("🟢 AUTHORITATIVE START SESSION HIT");
 
-        // ====================================
-        // 🔥 SECURE TOKEN EXTRACTION (HEADERS + BODY FALLBACK)
-        // ====================================
+        // BACKWARDS COMPATIBLE payloads to match your working version
         let token = null;
-
-        if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
-            token = req.headers.authorization.split(" ")[1]; // Extracts raw token from Header
-        } else if (req.body.token) {
-            token = req.body.token; // Fallback to raw JSON body for complete backwards safety
+        if (req.body.token) {
+            token = req.body.token; // Prioritize original JSON body payload
+        } else if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+            token = req.headers.authorization.split(" ")[1];
         }
 
         if (!token) {
@@ -35,7 +32,7 @@ router.post("/", async (req, res) => {
         const userId = user.id;
 
         // ====================================
-        // 2. AUTHORITATIVE SESSION CONFLICT CHECK (SERIALIZED CLEANUP)
+        // 2. AUTHORITATIVE SESSION CONFLICT CHECK
         // ====================================
         const existingSession = getUserSession(userId);
 
@@ -44,8 +41,9 @@ router.post("/", async (req, res) => {
             const totalAllowedDuration = (existingSession.dbSeconds + existingSession.graceSeconds) * 1000;
             const absoluteExpirationTime = existingSession.createdAt + totalAllowedDuration;
 
+            // pass strictly by sessionId to perfectly align with your reversed finalizer
             if (now < absoluteExpirationTime) {
-                console.log(`🔄 Active session ${existingSession.sessionId} interrupted by new start request. Force-finalizing sequentially.`);
+                console.log(`🔄 Active session ${existingSession.sessionId} interrupted. Force-finalizing sequentially.`);
                 await finalizeSession(existingSession.sessionId, "manual");
             } else {
                 console.log(`🧹 Stale session ${existingSession.sessionId} found during startup. Auto-finalizing.`);
@@ -112,7 +110,7 @@ router.post("/", async (req, res) => {
         createSession(newSession);
 
         // ====================================
-        // AUTHORITATIVE TIMEOUT (SELF-AWARE SAFETY NET)
+        // AUTHORITATIVE TIMEOUT (SAFETY NET)
         // ====================================
         const serverTimeoutDuration = (dbSeconds + graceSeconds) * 1000;
 
@@ -126,7 +124,7 @@ router.post("/", async (req, res) => {
                 }
 
                 console.log(`⏰ Server absolute cutoff limit reached for active session: ${sessionId}`);
-                await finalizeSession(sessionId, "timeout", false);
+                await finalizeSession(sessionId, "timeout");
             } catch (timeoutErr) {
                 console.log(`❌ ERROR INSIDE TIMEOUT HANDLER FOR ${sessionId}:`, timeoutErr.message);
             }
@@ -139,7 +137,7 @@ router.post("/", async (req, res) => {
             success: true,
             sessionId,
             sessionDuration: dbSeconds,
-            decartToken: decartJson.apiKey
+            decartToken: decartJson.apiKey // Keep the exact clean property name Node expects!
         });
 
     } catch (err) {
