@@ -1,6 +1,6 @@
 import express from "express";
 import { supabase } from "../lib/supabase.js";
-import { getUserSession, createSession } from "../lib/session-store.js";
+import { createSession, getUserSession, getSession } from "../lib/session-store.js";
 import { finalizeSession } from "../lib/finalizeSession.js";
 
 const router = express.Router();
@@ -110,23 +110,26 @@ router.post("/", async (req, res) => {
         createSession(newSession);
 
         // ====================================
-        // 6. AUTHORITATIVE SERVER-SIDE TIMEOUT
+        // AUTHORITATIVE TIMEOUT (SELF-AWARE SAFETY NET)
         // ====================================
         const serverTimeoutDuration = (dbSeconds + graceSeconds) * 1000;
 
         setTimeout(async () => {
-            // Check if the memory block still exists when the timer wakes up
-            const verifySession = getSession(sessionId);
-            if (!verifySession) {
-                console.log(`⏰ Safety timer woke up for ${sessionId}, but it was already closed. Ignoring task.`);
-                return;
+            try {
+                // Now that getSession is imported, this will work flawlessly!
+                const verifySession = getSession(sessionId);
+
+                if (!verifySession) {
+                    console.log(`⏰ Safety timer woke up for ${sessionId}, but it was already closed. Ignoring task.`);
+                    return;
+                }
+
+                console.log(`⏰ Server absolute cutoff limit reached for active session: ${sessionId}`);
+                await finalizeSession(sessionId, "timeout", false);
+            } catch (timeoutErr) {
+                console.log(`❌ ERROR INSIDE TIMEOUT HANDLER FOR ${sessionId}:`, timeoutErr.message);
             }
-
-            console.log(`⏰ Server absolute cutoff limit reached for: ${sessionId}`);
-            await finalizeSession(sessionId, "timeout", false);
         }, serverTimeoutDuration);
-
-        createSession(newSession);
 
         // ====================================
         // 7. RETURN TO UNTRUSTED NODE/C++
