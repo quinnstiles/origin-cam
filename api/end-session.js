@@ -1,31 +1,21 @@
 import express from "express";
-import { getSession } from "../lib/session-store.js";
-import { finalizeSession } from "../lib/finalizeSession.js"; // Match exact file layout
+import { finalizeSession } from "../lib/finalizeSession.js";
+// Import your token authentication middleware here as well
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
     try {
-        console.log("🛑 END SESSION HIT FROM NODE BRIDGE");
-        const { sessionId } = req.body || {};
+        // 🔒 AUTHORITATIVE EXTRACTION (Get userId from secure request auth token, not body!)
+        const userId = req.user.id;
 
-        if (!sessionId) {
-            return res.status(400).json({ success: false, message: "Missing sessionId" });
-        }
+        console.log(`🛑 END SESSION REQUESTED BY USER: ${userId}`);
 
-        const session = getSession(sessionId);
+        // Finalize by userId securely!
+        await finalizeSession(userId, "manual", true);
 
-        // If the server-side auto fallback timeout already stripped it, simply return true safely
-        if (!session) {
-            return res.json({ success: true, message: "Session already resolved or expired" });
-        }
-
-        // Execute unified transactional routine 
-        await finalizeSession(sessionId, "manual");
-
-        return res.json({ success: true });
+        return res.json({ success: true, message: "Session closed successfully" });
     } catch (err) {
-        console.log("❌ END SESSION ROUTE ERROR:", err.message);
         return res.status(500).json({ success: false, message: err.message });
     }
 });

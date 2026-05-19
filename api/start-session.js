@@ -91,19 +91,23 @@ router.post("/", async (req, res) => {
             return res.status(500).json({ success: false, message: "Failed creating Decart token" });
         }
 
+
+
         // ====================================
-        // 5. MEMORY STATE REGISTRATION
+        // MEMORY STATE REGISTRATION
         // ====================================
         const sessionId = `session_${Date.now()}`;
 
         const newSession = {
             sessionId,
-            userId,
+            userId, // From your decoded Supabase token
             createdAt: Date.now(),
+            lastHeartbeat: Date.now(), // Sets initial ping time
             dbSeconds,
-            graceSeconds,
-            timerId: null // We will populate this in a moment
+            graceSeconds
         };
+
+        createSession(newSession);
 
         // ====================================
         // 6. AUTHORITATIVE SERVER-SIDE TIMEOUT
@@ -111,16 +115,15 @@ router.post("/", async (req, res) => {
         const serverTimeoutDuration = (dbSeconds + graceSeconds) * 1000;
 
         setTimeout(async () => {
-            // Check the authoritative memory map right as the timer wakes up
-            const sessionVerification = getSession(sessionId);
-
-            if (!sessionVerification) {
-                console.log(`⏰ Stale safety timer woke up for ${sessionId}, but session is already long dead. Ignoring duty.`);
+            // Check if the memory block still exists when the timer wakes up
+            const verifySession = getSession(sessionId);
+            if (!verifySession) {
+                console.log(`⏰ Safety timer woke up for ${sessionId}, but it was already closed. Ignoring task.`);
                 return;
             }
 
-            console.log(`⏰ Server-side absolute timeout reached for active session: ${sessionId}`);
-            await finalizeSession(sessionId, "timeout");
+            console.log(`⏰ Server absolute cutoff limit reached for: ${sessionId}`);
+            await finalizeSession(sessionId, "timeout", false);
         }, serverTimeoutDuration);
 
         createSession(newSession);
