@@ -9,14 +9,7 @@ router.post("/", async (req, res) => {
     try {
         console.log("🟢 AUTHORITATIVE START SESSION HIT");
 
-        // BACKWARDS COMPATIBLE payloads to match your working version
-        let token = null;
-        if (req.body.token) {
-            token = req.body.token; // Prioritize original JSON body payload
-        } else if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
-            token = req.headers.authorization.split(" ")[1];
-        }
-
+        const { token } = req.body; // C++ / Node passes the User auth token
         if (!token) {
             return res.status(400).json({ success: false, message: "Missing token" });
         }
@@ -32,7 +25,7 @@ router.post("/", async (req, res) => {
         const userId = user.id;
 
         // ====================================
-        // 2. AUTHORITATIVE SESSION CONFLICT CHECK
+        // 2. AUTHORITATIVE SESSION CONFLICT CHECK (SERIALIZED CLEANUP)
         // ====================================
         const existingSession = getUserSession(userId);
 
@@ -41,11 +34,13 @@ router.post("/", async (req, res) => {
             const totalAllowedDuration = (existingSession.dbSeconds + existingSession.graceSeconds) * 1000;
             const absoluteExpirationTime = existingSession.createdAt + totalAllowedDuration;
 
-            // pass strictly by sessionId to perfectly align with your reversed finalizer
             if (now < absoluteExpirationTime) {
-                console.log(`🔄 Active session ${existingSession.sessionId} interrupted. Force-finalizing sequentially.`);
+                // Force-finalize the active session and CRITICAL: await it!
+                // This forces Node/Server to wait until the DB write and memory clear are 100% complete.
+                console.log(`🔄 Active session ${existingSession.sessionId} interrupted by new start request. Force-finalizing sequentially.`);
                 await finalizeSession(existingSession.sessionId, "manual");
             } else {
+                // Session is stale! Clean it up completely before moving forward
                 console.log(`🧹 Stale session ${existingSession.sessionId} found during startup. Auto-finalizing.`);
                 await finalizeSession(existingSession.sessionId, "timeout");
             }
@@ -65,6 +60,8 @@ router.post("/", async (req, res) => {
         }
 
         const dbSeconds = Number(dbUser.remaining_seconds || 0);
+
+        // 🛠️ FIX: Read dynamically from .env and cast to an intentional Number (Fallback to 15 if missing)
         const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 5);
 
         if (dbSeconds <= 0) {
@@ -74,6 +71,7 @@ router.post("/", async (req, res) => {
         // ====================================
         // 4. REQUEST DECART CLIENT TOKEN
         // ====================================
+        // Rule: Decart only receives dbSeconds. Never add graceSeconds here.
         const decartResponse = await fetch("https://api.decart.ai/v1/client/tokens", {
             method: "POST",
             headers: {
@@ -81,7 +79,7 @@ router.post("/", async (req, res) => {
                 "x-api-key": process.env.DECART_API_KEY
             },
             body: JSON.stringify({
-                expiresIn: dbSeconds,
+                expiresIn: dbSeconds, // Authoritative Decart cutoff
                 allowedModels: ["lucy-2"]
             })
         });
@@ -93,6 +91,8 @@ router.post("/", async (req, res) => {
             return res.status(500).json({ success: false, message: "Failed creating Decart token" });
         }
 
+
+
         // ====================================
         // MEMORY STATE REGISTRATION
         // ====================================
@@ -100,9 +100,9 @@ router.post("/", async (req, res) => {
 
         const newSession = {
             sessionId,
-            userId,
+            userId, // From your decoded Supabase token
             createdAt: Date.now(),
-            lastHeartbeat: Date.now(),
+            lastHeartbeat: Date.now(), // Sets initial ping time
             dbSeconds,
             graceSeconds
         };
@@ -110,12 +110,13 @@ router.post("/", async (req, res) => {
         createSession(newSession);
 
         // ====================================
-        // AUTHORITATIVE TIMEOUT (SAFETY NET)
+        // AUTHORITATIVE TIMEOUT (SELF-AWARE SAFETY NET)
         // ====================================
         const serverTimeoutDuration = (dbSeconds + graceSeconds) * 1000;
 
         setTimeout(async () => {
             try {
+                // Now that getSession is imported, this will work flawlessly!
                 const verifySession = getSession(sessionId);
 
                 if (!verifySession) {
@@ -124,7 +125,7 @@ router.post("/", async (req, res) => {
                 }
 
                 console.log(`⏰ Server absolute cutoff limit reached for active session: ${sessionId}`);
-                await finalizeSession(sessionId, "timeout");
+                await finalizeSession(sessionId, "timeout", false);
             } catch (timeoutErr) {
                 console.log(`❌ ERROR INSIDE TIMEOUT HANDLER FOR ${sessionId}:`, timeoutErr.message);
             }
@@ -137,7 +138,7 @@ router.post("/", async (req, res) => {
             success: true,
             sessionId,
             sessionDuration: dbSeconds,
-            decartToken: decartJson.apiKey // Keep the exact clean property name Node expects!
+            decartToken: decartJson.apiKey
         });
 
     } catch (err) {

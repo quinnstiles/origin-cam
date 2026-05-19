@@ -1,22 +1,20 @@
 import express from "express";
 import { finalizeSession } from "../lib/finalizeSession.js";
+// Import your token authentication middleware here as well
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
     try {
-        const { sessionId } = req.body; // Back to your original payload format
+        // 🔒 AUTHORITATIVE EXTRACTION (Get userId from secure request auth token, not body!)
+        const userId = req.user.id;
 
-        console.log(`🛑 END SESSION HIT FOR: ${sessionId}`);
+        console.log(`🛑 END SESSION REQUESTED BY USER: ${userId}`);
 
-        // Finalize and capture the remaining balance
-        const remainingSeconds = await finalizeSession(sessionId, "manual");
+        // Finalize by userId securely!
+        await finalizeSession(userId, "manual", true);
 
-        return res.json({
-            success: true,
-            message: "Session closed successfully",
-            remainingSeconds: remainingSeconds
-        });
+        return res.json({ success: true, message: "Session closed successfully" });
     } catch (err) {
         return res.status(500).json({ success: false, message: err.message });
     }
