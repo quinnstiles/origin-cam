@@ -49,19 +49,19 @@ router.post("/", async (req, res) => {
         // ====================================
         // 3. FETCH & VERIFY BALANCE FROM DATABASE
         // ====================================
-        // 💡 Note: Using your authoritative schema query ('profiles' and 'seconds')
-        const { data: profile, error: dbError } = await supabase
-            .from("profiles")
-            .select("seconds")
+        // 🌟 FIXED: Reverted back to your true database table layout
+        const { data: dbUser, error: dbError } = await supabase
+            .from("users")
+            .select("remaining_seconds")
             .eq("id", userId)
             .single();
 
-        if (dbError || !profile) {
-            console.log("❌ Profile balance lookup failed:", dbError?.message);
+        if (dbError || !dbUser) {
+            console.log("❌ Database balance lookup failed:", dbError?.message);
             return res.status(500).json({ success: false, message: "Could not fetch user billing data" });
         }
 
-        const dbSeconds = Number(profile.seconds || 0);
+        const dbSeconds = Number(dbUser.remaining_seconds || 0);
         const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 5);
 
         if (dbSeconds <= 0) {
