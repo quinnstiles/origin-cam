@@ -9,7 +9,7 @@ router.post("/", async (req, res) => {
     try {
         console.log("🟢 AUTHORITATIVE START SESSION HIT");
 
-        const { token } = req.body;
+        const { token } = req.body; // C++ / Node passes the User auth token
         if (!token) {
             return res.status(400).json({ success: false, message: "Missing token" });
         }
@@ -35,12 +35,13 @@ router.post("/", async (req, res) => {
             const absoluteExpirationTime = existingSession.createdAt + totalAllowedDuration;
 
             if (now < absoluteExpirationTime) {
-                console.log(`🔄 Active session ${existingSession.sessionId} interrupted. Force-finalizing sequentially via sessionId.`);
-                // 🔥 FIX: Match your reversed finalizer signature (passing sessionId)
+                // Force-finalize the active session and CRITICAL: await it!
+                // This forces Node/Server to wait until the DB write and memory clear are 100% complete.
+                console.log(`🔄 Active session ${existingSession.sessionId} interrupted by new start request. Force-finalizing sequentially.`);
                 await finalizeSession(existingSession.sessionId, "manual");
             } else {
-                console.log(`🧹 Stale session ${existingSession.sessionId} found during startup. Auto-finalizing via sessionId.`);
-                // 🔥 FIX: Match your reversed finalizer signature (passing sessionId)
+                // Session is stale! Clean it up completely before moving forward
+                console.log(`🧹 Stale session ${existingSession.sessionId} found during startup. Auto-finalizing.`);
                 await finalizeSession(existingSession.sessionId, "timeout");
             }
         }
@@ -59,6 +60,8 @@ router.post("/", async (req, res) => {
         }
 
         const dbSeconds = Number(dbUser.remaining_seconds || 0);
+
+        // 🛠️ FIX: Read dynamically from .env and cast to an intentional Number (Fallback to 15 if missing)
         const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 5);
 
         if (dbSeconds <= 0) {
@@ -68,6 +71,7 @@ router.post("/", async (req, res) => {
         // ====================================
         // 4. REQUEST DECART CLIENT TOKEN
         // ====================================
+        // Rule: Decart only receives dbSeconds. Never add graceSeconds here.
         const decartResponse = await fetch("https://api.decart.ai/v1/client/tokens", {
             method: "POST",
             headers: {
@@ -75,7 +79,7 @@ router.post("/", async (req, res) => {
                 "x-api-key": process.env.DECART_API_KEY
             },
             body: JSON.stringify({
-                expiresIn: dbSeconds,
+                expiresIn: dbSeconds, // Authoritative Decart cutoff
                 allowedModels: ["lucy-2"]
             })
         });
@@ -87,6 +91,8 @@ router.post("/", async (req, res) => {
             return res.status(500).json({ success: false, message: "Failed creating Decart token" });
         }
 
+
+
         // ====================================
         // MEMORY STATE REGISTRATION
         // ====================================
@@ -94,9 +100,9 @@ router.post("/", async (req, res) => {
 
         const newSession = {
             sessionId,
-            userId,
+            userId, // From your decoded Supabase token
             createdAt: Date.now(),
-            lastHeartbeat: Date.now(),
+            lastHeartbeat: Date.now(), // Sets initial ping time
             dbSeconds,
             graceSeconds
         };
@@ -110,6 +116,7 @@ router.post("/", async (req, res) => {
 
         setTimeout(async () => {
             try {
+                // Now that getSession is imported, this will work flawlessly!
                 const verifySession = getSession(sessionId);
 
                 if (!verifySession) {
@@ -118,8 +125,7 @@ router.post("/", async (req, res) => {
                 }
 
                 console.log(`⏰ Server absolute cutoff limit reached for active session: ${sessionId}`);
-                // 🔥 FIX: Match your reversed finalizer parameters perfectly
-                await finalizeSession(sessionId, "timeout");
+                await finalizeSession(sessionId, "timeout", false);
             } catch (timeoutErr) {
                 console.log(`❌ ERROR INSIDE TIMEOUT HANDLER FOR ${sessionId}:`, timeoutErr.message);
             }
