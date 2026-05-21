@@ -1,33 +1,34 @@
 import express from "express";
 import { finalizeSession } from "../lib/finalizeSession.js";
-// Ensure your secure token authentication middleware is active here (e.g., checkAuth)
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
     try {
-        // 1. 🔒 AUTHENTICATED USER (Populated by your auth middleware)
-        // If you aren't using middleware yet, you can fallback to req.body.userId temporarily,
-        // but keeping it on req.user.id is the secure way to go!
-        const userId = req.user?.id;
         const { sessionId } = req.body;
 
-        console.log(`🛑 END SESSION REQUESTED BY USER: ${userId || "Unknown"} for Session: ${sessionId}`);
+        console.log(`🛑 END SESSION REQUESTED FOR TARGET INSTANCE ID: ${sessionId}`);
 
         if (!sessionId) {
+            console.log("⚠️ END SESSION ABORTED: Received request without a valid sessionId payload.");
             return res.status(400).json({ success: false, message: "Missing sessionId in request body" });
         }
 
-        // 2. Finalize securely using the explicit sessionId 
-        // We pass false for 'isUserId' so it cleans up this exact session instance.
+        // Finalize securely using the explicit sessionId 
+        // Memory eviction is handled on step one inside our patched finalizeSession structure
         const summary = await finalizeSession(sessionId, "manual", false);
 
-        // 3. ⏱️ RETURN CURRENT BALANCE VALUE TO NODE -> C++
-        // We pull 'remainingSeconds' out of the summary object returned by our patched finalizeSession.js
+        // Fallback default safely if summary returns empty or encountered db edge cases
+        const balanceResponse = summary && typeof summary.remainingSeconds !== 'undefined'
+            ? summary.remainingSeconds
+            : 0;
+
+        console.log(`✨ END ROUTE COMPLETION: Returning balance balance ceiling [${balanceResponse}s] to proxy bridge.`);
+
         return res.json({
             success: true,
             message: "Session closed successfully",
-            remainingSeconds: summary ? summary.remainingSeconds : 0
+            remainingSeconds: Number(balanceResponse)
         });
 
     } catch (err) {
