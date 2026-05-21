@@ -1,6 +1,6 @@
 import express from "express";
 import { supabase } from "../lib/supabase.js";
-import { createSession, getUserSession, getSession, clearUserSession } from "../lib/session-store.js";
+import { createSession, getUserSession, clearUserSession } from "../lib/session-store.js";
 import { finalizeSession } from "../lib/finalizeSession.js";
 
 const router = express.Router();
@@ -33,12 +33,12 @@ router.post("/", async (req, res) => {
         if (existingSession) {
             console.log(`⚠️ Conflict detected for user ${userId}. Active session ID: ${existingSession.sessionId}`);
 
-            // 🌟 CRITICAL FIX 1: Run finalize in the background without blocking the response thread
+            // Run finalize in the background without blocking the response thread
             finalizeSession(existingSession.sessionId, "manual", false)
                 .then(() => console.log(`🔄 Background auto-cleanup of ${existingSession.sessionId} finished.`))
                 .catch(err => console.log(`⚠️ Background cleanup notice:`, err.message));
 
-            // 🌟 CRITICAL FIX 2: Explicitly wipe the map instantly so memory is 100% clear right now
+            // Explicitly wipe the map instantly so memory is 100% clear right now
             clearUserSession(userId);
         }
 
@@ -101,27 +101,26 @@ router.post("/", async (req, res) => {
         // ====================================
         const sessionId = `session_${Date.now()}`;
 
-        // INSIDE YOUR /api/start-session ROUTE HANDLER:
-
+        // 🌟 FIX: Variables mapped correctly to your scope profiles (dbSeconds and userId)
         const newSession = {
-            sessionId: `session_${Date.now()}`,
-            userId: req.body.userId,
+            sessionId: sessionId,
+            userId: userId,
             createdAt: Date.now(),
             lastHeartbeat: Date.now(),
-            dbSeconds: userBalance,
-            graceSeconds: 5,
-            timeoutHandle: null // 🌟 1. Establish the register property
+            dbSeconds: dbSeconds,
+            graceSeconds: graceSeconds,
+            timeoutHandle: null
         };
 
         const totalAllowedMs = (newSession.dbSeconds + newSession.graceSeconds) * 1000;
 
-        // 🌟 2. Assign the timeout loop handle directly to the object configuration
+        // Assign the timeout loop handle directly to the object configuration
         newSession.timeoutHandle = setTimeout(async () => {
             console.log(`🚨 CRASH DETECTED: Session ${newSession.sessionId} went dark for ${newSession.dbSeconds}s.`);
             await finalizeSession(newSession.sessionId, "timeout", false);
         }, totalAllowedMs);
 
-        // 🌟 3. Commit to memory store with the live timer handle attached
+        // Commit to memory store with the live timer handle attached
         createSession(newSession);
 
         // ====================================
