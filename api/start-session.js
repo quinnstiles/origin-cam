@@ -9,7 +9,8 @@ router.post("/", async (req, res) => {
     try {
         console.log("🚀 AUTHORITATIVE START SESSION HIT");
 
-        const { token } = req.body; // Passed up from Node / C++
+        // 🛠️ EXTRACT: Grab both the token and the proxy forwarded duration limit
+        const { token, duration_limit_sec } = req.body;
         if (!token) {
             return res.status(400).json({ success: false, message: "Missing token" });
         }
@@ -36,11 +37,9 @@ router.post("/", async (req, res) => {
             const absoluteExpirationTime = existingSession.createdAt + totalAllowedDuration;
 
             if (now < absoluteExpirationTime) {
-                // Force-finalize the active session and await it!
                 console.log(`🔄 Active session ${existingSession.sessionId} interrupted by new start request. Force-finalizing sequentially.`);
                 await finalizeSession(existingSession.sessionId, "manual");
             } else {
-                // Session is stale! Clean it up completely before moving forward
                 console.log(`🧹 Stale session ${existingSession.sessionId} found during startup. Auto-finalizing.`);
                 await finalizeSession(existingSession.sessionId, "timeout");
             }
@@ -49,7 +48,6 @@ router.post("/", async (req, res) => {
         // ====================================
         // 3. FETCH & VERIFY BALANCE FROM DATABASE
         // ====================================
-        // 🌟 FIXED: Reverted back to your true database table layout
         const { data: dbUser, error: dbError } = await supabase
             .from("users")
             .select("remaining_seconds")
@@ -64,15 +62,22 @@ router.post("/", async (req, res) => {
         const dbSeconds = Number(dbUser.remaining_seconds || 0);
         const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 5);
 
-        if (dbSeconds <= 0) {
-            console.log(`❌ Denied user ${userId}: Insufficient balance (${dbSeconds}s available).`);
-            return res.status(403).json({ success: false, message: "Insufficient balance. Please recharge." });
+        // 🚨 STRUCTURAL GUARDRAIL: Decart requires a minimum ceiling of 10s. Block sub-10 second requests.
+        if (dbSeconds < 10) {
+            console.log(`❌ Denied user ${userId}: Insufficient balance for initialization (${dbSeconds}s available). Minimum required is 10s.`);
+            return res.status(403).json({
+                success: false,
+                message: `Insufficient balance. A minimum of 10 seconds is required to initialize a stream. You have ${dbSeconds}s.`
+            });
         }
+
+        // Use proxy duration parameter as secondary mapping, default back directly to dbSeconds balance
+        const targetedDurationCeiling = duration_limit_sec ? Number(duration_limit_sec) : dbSeconds;
 
         // ====================================
         // 4. REQUEST DECART CLIENT TOKEN
         // ====================================
-        // Rule: Decart only receives dbSeconds. Never add graceSeconds here.
+        // We now pack the constraint properties directly into the transient JWT configuration
         const decartResponse = await fetch("https://api.decart.ai/v1/client/tokens", {
             method: "POST",
             headers: {
@@ -80,8 +85,15 @@ router.post("/", async (req, res) => {
                 "x-api-key": process.env.DECART_API_KEY
             },
             body: JSON.stringify({
-                expiresIn: Math.max(60, dbSeconds), // Keep safe minimum floor boundary
-                allowedModels: ["lucy-2"]
+                expiresIn: Math.max(300, targetedDurationCeiling),
+                allowedModels: ["lucy-2"],
+                constraints: {
+                    realtime: {
+                        // 🌟 FIX: Decart will bake this value into the token. 
+                        // Once this exact duration hits, Decart's WebRTC container shuts down automatically.
+                        maxSessionDuration: targetedDurationCeiling
+                    }
+                }
             })
         });
 
@@ -131,13 +143,13 @@ router.post("/", async (req, res) => {
         // ====================================
         // 7. RETURN TO BACKUP BRIDGE.JS EXPLICIT LAYOUT
         // ====================================
-        console.log(`✅ Session ${sessionId} generated successfully. Returning credentials.`);
+        console.log(`✅ Session ${sessionId} generated successfully with dynamic maxSessionDuration restriction of ${targetedDurationCeiling}s.`);
 
         return res.json({
             success: true,
             sessionId: sessionId,
             decartToken: decartJson.apiKey,
-            remainingSeconds: dbSeconds // Structural key expected by backup bridge.js
+            remainingSeconds: dbSeconds
         });
 
     } catch (err) {
