@@ -101,33 +101,27 @@ router.post("/", async (req, res) => {
         // ====================================
         const sessionId = `session_${Date.now()}`;
 
+        // INSIDE YOUR /api/start-session ROUTE HANDLER:
+
         const newSession = {
-            sessionId,
-            userId,
+            sessionId: `session_${Date.now()}`,
+            userId: req.body.userId,
             createdAt: Date.now(),
-            lastHeartbeat: Date.now(),
-            dbSeconds,
-            graceSeconds
+            dbSeconds: userBalance,
+            graceSeconds: 5,
+            timeoutHandle: null // 🌟 1. Establish the register property
         };
 
+        const totalAllowedMs = (newSession.dbSeconds + newSession.graceSeconds) * 1000;
+
+        // 🌟 2. Assign the timeout loop handle directly to the object configuration
+        newSession.timeoutHandle = setTimeout(async () => {
+            console.log(`🚨 CRASH DETECTED: Session ${newSession.sessionId} went dark for ${newSession.dbSeconds}s.`);
+            await finalizeSession(newSession.sessionId, "timeout", false);
+        }, totalAllowedMs);
+
+        // 🌟 3. Commit to memory store with the live timer handle attached
         createSession(newSession);
-
-        // ====================================
-        // 6. AUTHORITATIVE TIMEOUT (SELF-AWARE SAFETY NET)
-        // ====================================
-        const serverTimeoutDuration = (dbSeconds + graceSeconds) * 1000;
-
-        setTimeout(async () => {
-            try {
-                const verifySession = getSession(sessionId);
-                if (!verifySession) return;
-
-                console.log(`⏰ Server absolute cutoff limit reached for active session: ${sessionId}`);
-                await finalizeSession(sessionId, "timeout", false);
-            } catch (timeoutErr) {
-                console.log(`❌ ERROR INSIDE TIMEOUT HANDLER FOR ${sessionId}:`, timeoutErr.message);
-            }
-        }, serverTimeoutDuration);
 
         // ====================================
         // 7. RETURN TO BRIDGE
