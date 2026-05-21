@@ -107,6 +107,7 @@ router.post("/", async (req, res) => {
             sessionId: `session_${Date.now()}`,
             userId: req.body.userId,
             createdAt: Date.now(),
+            lastHeartbeat: Date.now(),
             dbSeconds: userBalance,
             graceSeconds: 5,
             timeoutHandle: null // 🌟 1. Establish the register property

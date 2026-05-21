@@ -95,7 +95,16 @@ setInterval(async () => {
     const DISCONNECT_THRESHOLD = 10000; // 10 seconds without a ping = crash
 
     for (const session of activeSessions.values()) {
-        const timeSinceLastPing = now - session.lastHeartbeat;
+        // 🌟 FIX 1: Fallback to session.createdAt if lastHeartbeat hasn't been set yet
+        const referenceTime = session.lastHeartbeat || session.createdAt;
+        const timeSinceLastPing = now - referenceTime;
+
+        // 🌟 FIX 2: Standard defensive check against corrupted data or NaN entries
+        if (isNaN(timeSinceLastPing)) {
+            console.log(`⚠️ Warning: Session ${session.sessionId} has an invalid timestamp. Correcting flag.`);
+            session.lastHeartbeat = Date.now();
+            continue;
+        }
 
         if (timeSinceLastPing > DISCONNECT_THRESHOLD) {
             console.log(`🚨 CRASH DETECTED: Session ${session.sessionId} went dark for ${Math.floor(timeSinceLastPing / 1000)}s.`);
