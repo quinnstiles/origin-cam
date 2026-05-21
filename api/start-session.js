@@ -1,6 +1,6 @@
 import express from "express";
 import { supabase } from "../lib/supabase.js";
-import { createSession, getUserSession, getSession } from "../lib/session-store.js";
+import { createSession, getUserSession, getSession, clearUserSession } from "../lib/session-store.js";
 import { finalizeSession } from "../lib/finalizeSession.js";
 
 const router = express.Router();
@@ -9,7 +9,6 @@ router.post("/", async (req, res) => {
     try {
         console.log("🚀 AUTHORITATIVE START SESSION HIT");
 
-        // 🛠️ EXTRACT: Grab both the token and the proxy forwarded duration limit
         const { token, duration_limit_sec } = req.body;
         if (!token) {
             return res.status(400).json({ success: false, message: "Missing token" });
@@ -27,22 +26,20 @@ router.post("/", async (req, res) => {
         const userId = user.id;
 
         // ====================================
-        // 2. AUTHORITATIVE SESSION CONFLICT CHECK (SERIALIZED CLEANUP)
+        // 2. FORCE CLEAN SLATE (NO MORE HANGING AWAITS)
         // ====================================
         const existingSession = getUserSession(userId);
 
         if (existingSession) {
-            const now = Date.now();
-            const totalAllowedDuration = (existingSession.dbSeconds + existingSession.graceSeconds) * 1000;
-            const absoluteExpirationTime = existingSession.createdAt + totalAllowedDuration;
+            console.log(`⚠️ Conflict detected for user ${userId}. Active session ID: ${existingSession.sessionId}`);
 
-            if (now < absoluteExpirationTime) {
-                console.log(`🔄 Active session ${existingSession.sessionId} interrupted by new start request. Force-finalizing sequentially.`);
-                await finalizeSession(existingSession.sessionId, "manual");
-            } else {
-                console.log(`🧹 Stale session ${existingSession.sessionId} found during startup. Auto-finalizing.`);
-                await finalizeSession(existingSession.sessionId, "timeout");
-            }
+            // 🌟 CRITICAL FIX 1: Run finalize in the background without blocking the response thread
+            finalizeSession(existingSession.sessionId, "manual", false)
+                .then(() => console.log(`🔄 Background auto-cleanup of ${existingSession.sessionId} finished.`))
+                .catch(err => console.log(`⚠️ Background cleanup notice:`, err.message));
+
+            // 🌟 CRITICAL FIX 2: Explicitly wipe the map instantly so memory is 100% clear right now
+            clearUserSession(userId);
         }
 
         // ====================================
@@ -62,22 +59,20 @@ router.post("/", async (req, res) => {
         const dbSeconds = Number(dbUser.remaining_seconds || 0);
         const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 5);
 
-        // 🚨 STRUCTURAL GUARDRAIL: Decart requires a minimum ceiling of 10s. Block sub-10 second requests.
         if (dbSeconds < 10) {
-            console.log(`❌ Denied user ${userId}: Insufficient balance for initialization (${dbSeconds}s available). Minimum required is 10s.`);
+            console.log(`❌ Denied user ${userId}: Insufficient balance for initialization (${dbSeconds}s available).`);
             return res.status(403).json({
                 success: false,
-                message: `Insufficient balance. A minimum of 10 seconds is required to initialize a stream. You have ${dbSeconds}s.`
+                message: `Insufficient balance. A minimum of 10 seconds is required to initialize. You have ${dbSeconds}s.`
             });
         }
 
-        // Use proxy duration parameter as secondary mapping, default back directly to dbSeconds balance
         const targetedDurationCeiling = duration_limit_sec ? Number(duration_limit_sec) : dbSeconds;
 
         // ====================================
         // 4. REQUEST DECART CLIENT TOKEN
         // ====================================
-        // We now pack the constraint properties directly into the transient JWT configuration
+        console.log(`🧠 Requesting Decart token with dynamic duration: ${targetedDurationCeiling}s`);
         const decartResponse = await fetch("https://api.decart.ai/v1/client/tokens", {
             method: "POST",
             headers: {
@@ -89,8 +84,6 @@ router.post("/", async (req, res) => {
                 allowedModels: ["lucy-2"],
                 constraints: {
                     realtime: {
-                        // 🌟 FIX: Decart will bake this value into the token. 
-                        // Once this exact duration hits, Decart's WebRTC container shuts down automatically.
                         maxSessionDuration: targetedDurationCeiling
                     }
                 }
@@ -127,11 +120,7 @@ router.post("/", async (req, res) => {
         setTimeout(async () => {
             try {
                 const verifySession = getSession(sessionId);
-
-                if (!verifySession) {
-                    console.log(`⏰ Safety timer woke up for ${sessionId}, but it was already closed. Ignoring task.`);
-                    return;
-                }
+                if (!verifySession) return;
 
                 console.log(`⏰ Server absolute cutoff limit reached for active session: ${sessionId}`);
                 await finalizeSession(sessionId, "timeout", false);
@@ -141,9 +130,9 @@ router.post("/", async (req, res) => {
         }, serverTimeoutDuration);
 
         // ====================================
-        // 7. RETURN TO BACKUP BRIDGE.JS EXPLICIT LAYOUT
+        // 7. RETURN TO BRIDGE
         // ====================================
-        console.log(`✅ Session ${sessionId} generated successfully with dynamic maxSessionDuration restriction of ${targetedDurationCeiling}s.`);
+        console.log(`✅ Session ${sessionId} generated successfully.`);
 
         return res.json({
             success: true,
