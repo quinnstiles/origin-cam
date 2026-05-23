@@ -11,7 +11,8 @@ router.post("/", async (req, res) => {
 
         const { token, duration_limit_sec } = req.body;
         if (!token) {
-            return res.status(400).json({ success: false, message: "Missing token" });
+            // 🌟 FIX: Return a clean 200 with quoted success strings for your C++ custom parser
+            return res.json({ success: "false", message: "Missing authorization token." });
         }
 
         // ====================================
@@ -21,7 +22,7 @@ router.post("/", async (req, res) => {
 
         if (authError || !user) {
             console.log("❌ Token authentication rejected:", authError?.message);
-            return res.status(401).json({ success: false, message: "Unauthorized token" });
+            return res.json({ success: "false", message: "Unauthorized token status." });
         }
         const userId = user.id;
 
@@ -53,17 +54,18 @@ router.post("/", async (req, res) => {
 
         if (dbError || !dbUser) {
             console.log("❌ Database balance lookup failed:", dbError?.message);
-            return res.status(500).json({ success: false, message: "Could not fetch user billing data" });
+            return res.json({ success: "false", message: "Could not fetch user billing data." });
         }
 
         const dbSeconds = Number(dbUser.remaining_seconds || 0);
         const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 5);
 
-        if (dbSeconds < 10) {
+        // 🌟 10-SECOND EXPLICIT CHECK BLOCK (CRITICAL CORRECTION)
+        if (dbSeconds <= 10) {
             console.log(`❌ Denied user ${userId}: Insufficient balance for initialization (${dbSeconds}s available).`);
-            return res.status(403).json({
-                success: false,
-                message: `Insufficient balance. A minimum of 10 seconds is required to initialize. You have ${dbSeconds}s.`
+            return res.json({
+                success: "false", // Wrapped in quotes for ExtractString helper
+                message: `Cannot start session. A minimum of 11 seconds is required to initialize Decart AI pipelines. (You have ${dbSeconds}s)`
             });
         }
 
@@ -93,7 +95,7 @@ router.post("/", async (req, res) => {
         const decartJson = await decartResponse.json();
         if (!decartResponse.ok || !decartJson?.apiKey) {
             console.log("❌ Decart token generation failed:", decartJson);
-            return res.status(500).json({ success: false, message: "Failed creating Decart token" });
+            return res.json({ success: "false", message: "Failed creating Decart token." });
         }
 
         // ====================================
@@ -101,7 +103,6 @@ router.post("/", async (req, res) => {
         // ====================================
         const sessionId = `session_${Date.now()}`;
 
-        // 🌟 FIX: Variables mapped correctly to your scope profiles (dbSeconds and userId)
         const newSession = {
             sessionId: sessionId,
             userId: userId,
@@ -124,12 +125,12 @@ router.post("/", async (req, res) => {
         createSession(newSession);
 
         // ====================================
-        // 7. RETURN TO BRIDGE
+        // 6. RETURN TO BRIDGE
         // ====================================
         console.log(`✅ Session ${sessionId} generated successfully.`);
 
         return res.json({
-            success: true,
+            success: "true", // 🌟 WRAPPED IN QUOTES FOR WINDOWS DESKTOP APP
             sessionId: sessionId,
             decartToken: decartJson.apiKey,
             remainingSeconds: dbSeconds
@@ -137,7 +138,7 @@ router.post("/", async (req, res) => {
 
     } catch (err) {
         console.log("❌ START SESSION ERROR:", err.message);
-        return res.status(500).json({ success: false, message: err.message });
+        return res.json({ success: "false", message: err.message });
     }
 });
 
