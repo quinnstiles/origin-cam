@@ -17,20 +17,16 @@ import authRoute
 import startSessionRoute
     from "./api/start-session.js";
 
-
-
 import endSessionRoute
     from "./api/end-session.js";
+
+import systemCheckRoute
+    from "./api/system_check.js"; // 🌟 INCLUDED: Imported your remote kill-switch module
 
 import { getAllSessions } from "./lib/session-store.js";
 import { finalizeSession } from "./lib/finalizeSession.js";
 
-
 import heartbeatRouter from "./api/heartbeat.js";
-// ========================================
-// HEARTBEAT MONITOR
-// ========================================
-
 
 // ========================================
 // APP
@@ -59,17 +55,19 @@ app.use(
     authRoute
 );
 
-
 app.use(
     "/api/start-session",
     startSessionRoute
 );
 
-
-
 app.use(
     "/api/end-session",
     endSessionRoute
+);
+
+app.use(
+    "/api/system-check", // 🌟 MOUNTED: Active endpoint used by CheckSystemVersion in C++
+    systemCheckRoute
 );
 
 // ========================================
@@ -77,14 +75,11 @@ app.use(
 // ========================================
 
 app.get("/", (req, res) => {
-
     res.json({
         success: true,
-        message:
-            "Origin server running"
+        message: "Origin server running"
     });
 });
-
 
 // ====================================
 // 💓 THE GLOBAL CRASH DETECTION ENGINE
@@ -116,20 +111,11 @@ setInterval(async () => {
 }, 5000); // Sweeps memory every 5 seconds
 
 // ========================================
-// START HEARTBEAT MONITOR
-// ========================================
-
-
-// ========================================
 // SERVER
 // ========================================
 
-const PORT =
-    process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-
-    console.log(
-        `🚀 SERVER RUNNING ON ${PORT}`
-    );
+    console.log(`🚀 SERVER RUNNING ON ${PORT}`);
 });
