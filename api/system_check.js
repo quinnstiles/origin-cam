@@ -3,60 +3,59 @@ import { supabase } from '../lib/supabase.js';
 
 const router = express.Router();
 
-// ========================================
-// SYSTEM VERSION CONTROL GATEWAY
-// ========================================
 router.post('/', async (req, res) => {
     try {
         const { signature, version } = req.body;
 
-        // Ensure incoming payload has required properties
         if (!signature || version === undefined) {
             return res.json({
-                supported: false,
+                supported: "false", // 🌟 WRAPPED IN QUOTES FOR C++ PARSER
                 message: "Missing version validation parameters."
             });
         }
 
-        // Query the public version control matrix table
+        // Query the table using your exact column name containing the space
         const { data: record, error } = await supabase
             .from('system_version_control')
             .select('*')
             .eq('signature_version_name', signature)
-            .eq('version_ release', parseFloat(version)) // Matches numeric data type mapping
+            .eq('version_ release', parseFloat(version))
             .maybeSingle();
 
         if (error) {
             console.error('DATABASE VERSION ERROR:', error.message);
             return res.json({
-                supported: false,
+                supported: "false",
                 message: "Server verification error. Please try again."
             });
         }
 
-        // Rule 1: If the signature + version combination doesn't exist in the DB
+        // Rule 1: Version signature entry doesn't exist
         if (!record) {
             return res.json({
-                supported: false,
+                supported: "false", // 🌟 WRAPPED IN QUOTES
                 message: "This version is no longer supported."
             });
         }
 
-        // Rule 2: If the record exists, but version_state is explicitly turned off (false)
+        // Rule 2: Version is explicitly disabled
         if (record.version_state === false) {
             return res.json({
-                supported: false,
+                supported: "false", // 🌟 WRAPPED IN QUOTES
                 message: "This version is no longer supported."
             });
         }
 
-        // All clearance barriers passed successfully
-        return res.json({ supported: true });
+        // Success Clearance Barrier Passed
+        return res.json({
+            supported: "true", // 🌟 WRAPPED IN QUOTES: Matches ExtractString expectation perfectly
+            message: "Success"
+        });
 
     } catch (err) {
         console.error('SYSTEM FAULT IN CHECK ROUTE:', err.message);
         return res.json({
-            supported: false,
+            supported: "false",
             message: "Critical server error processing system verification."
         });
     }
