@@ -82,7 +82,10 @@ router.post("/", async (req, res) => {
             return res.json({ success: "false", message: "Infrastructure token configuration error." });
         }
 
-        console.log(`🧠 Requesting Decart token with dynamic duration: ${targetedDurationCeiling}s`);
+        // 🌟 FIX: Cap the value sent to Decart at 3600, while preserving your actual dbSeconds for local timeout tracking!
+        const decartSafeDuration = Math.min(3600, targetedDurationCeiling);
+
+        console.log(`🧠 Requesting Decart token with dynamic duration: ${decartSafeDuration}s (Original Ceiling: ${targetedDurationCeiling}s)`);
 
         let decartJson;
         try {
@@ -93,11 +96,11 @@ router.post("/", async (req, res) => {
                     "x-api-key": process.env.DECART_API_KEY
                 },
                 body: JSON.stringify({
-                    expiresIn: Math.max(300, targetedDurationCeiling),
+                    expiresIn: Math.max(300, decartSafeDuration), // 🎯 Capped to max 3600
                     allowedModels: ["lucy-2"],
                     constraints: {
                         realtime: {
-                            maxSessionDuration: targetedDurationCeiling
+                            maxSessionDuration: decartSafeDuration // 🎯 Capped to max 3600
                         }
                     }
                 })
