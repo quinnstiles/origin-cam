@@ -37,7 +37,6 @@ router.post("/login", async (req, res) => {
 
         if (dbError || !dbUser) {
             console.log(`❌ Profile sync lookup error for UID ${userId}:`, dbError?.message);
-            // Force fully logging out the session context from server if data structure is missing
             await supabase.auth.admin.signOut(authData.session.access_token);
             return res.json({ success: "false", message: "User workspace configuration profile not found." });
         }
@@ -45,10 +44,7 @@ router.post("/login", async (req, res) => {
         // 🌟 CRITICAL ENFORCEMENT GATE: Verify status state and application signatures
         if (dbUser.status !== true || dbUser.status === "false") {
             console.log(`🚫 ACCESS DENIED: Account for ${email} is explicitly blocked or restricted.`);
-
-            // 🌟 FORCE LOGOUT: Instantly invalidate the token session context so they are severed completely
             await supabase.auth.admin.signOut(authData.session.access_token);
-
             return res.json({
                 success: "false",
                 message: "Your account has been restricted or blocked. Please contact support."
@@ -62,16 +58,47 @@ router.post("/login", async (req, res) => {
             return res.json({ success: "false", message: "Application platform signature verification failed." });
         }
 
-        // Success: Account clear, passed checks, fully authenticated for RLS context access
         console.log(`🎯 Successful authentication match verified for: ${email}`);
         return res.json({
             success: "true",
             message: "Login successful.",
-            session: authData.session // Pass this directly to website storage or desktop cache
+            session: authData.session
         });
 
     } catch (err) {
         console.error("❌ CRITICAL LOGIN ROUTE EXCEPTION:", err.message);
+        return res.json({ success: "false", message: err.message });
+    }
+});
+
+// =========================================================
+// 🔒 ENDPOINT 3: GLOBAL LOGOUT ENGINE
+// =========================================================
+router.post("/logout", async (req, res) => {
+    try {
+        console.log("🔒 LOGOUT REQUEST RECEIVED");
+        const { accessToken } = req.body;
+
+        if (!accessToken) {
+            return res.json({ success: "false", message: "Active access token is required to log out." });
+        }
+
+        // Invalidate the session token on Supabase's auth service completely
+        const { error } = await supabase.auth.admin.signOut(accessToken);
+
+        if (error) {
+            console.log("⚠️ Supabase engine logout warning:", error.message);
+            // We continue anyway so the frontend can clear its local caches regardless
+        }
+
+        console.log("✅ Session token revoked successfully.");
+        return res.json({
+            success: "true",
+            message: "Logged out successfully."
+        });
+
+    } catch (err) {
+        console.error("❌ LOGOUT ROUTE EXCEPTION:", err.message);
         return res.json({ success: "false", message: err.message });
     }
 });
@@ -88,8 +115,6 @@ router.post("/forgot-password", async (req, res) => {
             return res.json({ success: "false", message: "Email address is required." });
         }
 
-        // Initialize Supabase password recovery reset email pipeline flow
-        // The redirection URL points back to your deployed production website domain recovery view
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
             redirectTo: "https://your-origin-cam-website.com/update-password",
         });

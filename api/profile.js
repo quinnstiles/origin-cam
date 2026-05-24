@@ -26,9 +26,10 @@ router.get("/profile", async (req, res) => {
         }
 
         // 2. Fetch linked log entries sorted by latest interaction timestamp
+        // 🌟 UPDATED: select("*, status") implicitly brings along the fresh transaction indicator
         const { data: userHistory, error: historyError } = await supabase
             .from("history")
-            .select("*")
+            .select("id, user_id, created_at, session_duration_seconds, remaining_seconds, signature, status")
             .eq("user_id", userId)
             .order("created_at", { ascending: false });
 
