@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase.js";
 const router = express.Router();
 
 // =========================================================
-// 👤 FETCH USER PROFILE DATA (HISTORY EXTENSION PURGED)
+// 👤 FETCH USER PROFILE & MATCHING ADMIN CONFIG ASSETS
 // =========================================================
 router.get("/profile", async (req, res) => {
     try {
@@ -26,10 +26,28 @@ router.get("/profile", async (req, res) => {
             return res.json({ success: "false", message: "Profile context data target not found." });
         }
 
-        // 🎯 Clean profile layout returned back up to the frontend website
+        // 2. Fetch global settings matching the user's signature matrix string
+        let adminConfig = null;
+        if (userProfile.signature) {
+            // 🌟 UPDATED: Selecting exact new matching columns (window_download_link and macOS_download_link)
+            const { data: configData, error: configError } = await supabase
+                .from("admin")
+                .select("id, created_at, signature, payment_instruction, selling_price, window_download_link, macOS_download_link")
+                .eq("signature", userProfile.signature)
+                .maybeSingle();
+
+            if (configError) {
+                console.log(`⚠️ Admin table fallback configuration warning for signature [${userProfile.signature}]:`, configError.message);
+            } else if (configData) {
+                adminConfig = configData;
+            }
+        }
+
+        // 🎯 Return the complete compound entity pack to the frontend dashboard website
         return res.json({
             success: "true",
-            profile: userProfile
+            profile: userProfile,
+            adminSettings: adminConfig
         });
 
     } catch (err) {
