@@ -19,6 +19,7 @@ import heartbeatRouter from "./api/heartbeat.js";
 // 🌟 NEW: Web Platform Authentication Ingress
 import registerRoute from "./api/register.js";
 import loginRoute from "./api/login.js";
+import profileRoute from "./api/profile.js";
 
 import { getAllSessions } from "./lib/session-store.js";
 import { finalizeSession } from "./lib/finalizeSession.js";
@@ -49,6 +50,8 @@ app.use("/api/system-check", systemCheckRoute);
 app.use("/api/register", registerRoute);
 app.use("/api", loginRoute); // Mounts /login and /forgot-password cleanly under /api/login & /api/forgot-password
 
+// Mount profile and ledger tracking tools securely
+app.use("/api", profileRoute); // Mounts /api/profile and /api/profile/update-name
 // ========================================
 // HEALTH CHECK
 // ========================================
