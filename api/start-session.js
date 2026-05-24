@@ -54,21 +54,21 @@ router.post("/", async (req, res) => {
             return res.json({ success: "false", message: "Could not fetch user billing data." });
         }
 
-        // 🌟 CHECK 1: Verify account status is active
+        // Verify account restriction status gates cleanly
         if (dbUser.status !== true && dbUser.status !== "true") {
-            console.log(`🚫 Denied user ${userId}: Account is restricted/blocked.`);
-            return res.json({ success: "false", message: "Account already exists or restricted email, please use another email." });
+            console.log(`🚫 Denied restricted account execution for user ${userId}`);
+            return res.json({ success: "false", message: "Account restriction active. Access denied." });
         }
 
         const dbSeconds = Number(dbUser.remaining_seconds || 0);
         const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 5);
 
-        // 🌟 CHECK 2: Minimum 10-Second Balance Gate
+        // Minimum 10-Second Balance Gate Check
         if (dbSeconds <= 10) {
-            console.log(`❌ Denied user ${userId}: Insufficient balance for initialization (${dbSeconds}s available).`);
+            console.log(`❌ Denied user ${userId}: Insufficient balance (${dbSeconds}s available).`);
             return res.json({
                 success: "false",
-                message: `Cannot start session. A minimum of 11 seconds is required to initialize Origin-Cam AI. (You have ${dbSeconds}s)`
+                message: `Cannot start session. A minimum of 11 seconds is required to initialize Origin-Cam AI.`
             });
         }
 
@@ -78,8 +78,8 @@ router.post("/", async (req, res) => {
         // 4. REQUEST DECART CLIENT TOKEN
         // ====================================
         if (!process.env.DECART_API_KEY) {
-            console.log("❌ CRITICAL CONFIG ERROR: DECART_API_KEY environment variable is missing.");
-            return res.json({ success: "false", message: "Server configuration error: Missing infrastructure keys." });
+            console.log("❌ CONFIG ERROR: Missing DECART_API_KEY.");
+            return res.json({ success: "false", message: "Infrastructure token configuration error." });
         }
 
         console.log(`🧠 Requesting Decart token with dynamic duration: ${targetedDurationCeiling}s`);
@@ -106,13 +106,12 @@ router.post("/", async (req, res) => {
             decartJson = await decartResponse.json();
 
             if (!decartResponse.ok || !decartJson?.apiKey) {
-                console.log("❌ Decart provider rejected request:", decartJson);
-                return res.json({ success: "false", message: "External AI stream token allocation rejected." });
+                console.log("❌ Decart token generation rejected:", decartJson);
+                return res.json({ success: "false", message: "AI stream authorization rejected by host provider." });
             }
         } catch (fetchErr) {
-            console.log("❌ DECART NETWORK TIMEOUT OR FAILURE:", fetchErr.message);
-            // 🌟 PREVENTS APP HANG: Immediately sends a response back to C++ if the external API is unreachable
-            return res.json({ success: "false", message: "Network connection timeout to AI model broker." });
+            console.log("❌ DECART NETWORK FAILURE:", fetchErr.message);
+            return res.json({ success: "false", message: "Network connection timeout to stream cluster broker." });
         }
 
         // ====================================

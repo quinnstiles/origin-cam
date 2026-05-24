@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase.js";
 const router = express.Router();
 
 // =========================================================
-// 👤 FETCH USER PROFILE AND SESSION HISTORY LOGS
+// 👤 FETCH USER PROFILE DATA (HISTORY EXTENSION PURGED)
 // =========================================================
 router.get("/profile", async (req, res) => {
     try {
@@ -14,29 +14,22 @@ router.get("/profile", async (req, res) => {
             return res.json({ success: "false", message: "Parameter userId is required." });
         }
 
-        // 1. Fetch main user profile statistics
+        // 1. Fetch main user profile attributes
         const { data: userProfile, error: profileError } = await supabase
             .from("users")
-            .select("*")
+            .select("id, email, name, remaining_seconds, created_at, updated_at, signature, status")
             .eq("id", userId)
             .single();
 
         if (profileError || !userProfile) {
+            console.log(`❌ Profile sync lookup error for UID ${userId}:`, profileError?.message);
             return res.json({ success: "false", message: "Profile context data target not found." });
         }
 
-        // 2. Fetch linked log entries sorted by latest interaction timestamp
-        // 🌟 UPDATED: select("*, status") implicitly brings along the fresh transaction indicator
-        const { data: userHistory, error: historyError } = await supabase
-            .from("history")
-            .select("id, user_id, created_at, session_duration_seconds, remaining_seconds, signature, status")
-            .eq("user_id", userId)
-            .order("created_at", { ascending: false });
-
+        // 🎯 Clean profile layout returned back up to the frontend website
         return res.json({
             success: "true",
-            profile: userProfile,
-            history: historyError ? [] : userHistory
+            profile: userProfile
         });
 
     } catch (err) {
