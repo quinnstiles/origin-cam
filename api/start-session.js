@@ -65,7 +65,7 @@ router.post("/", async (req, res) => {
             console.log(`❌ Denied user ${userId}: Insufficient balance for initialization (${dbSeconds}s available).`);
             return res.json({
                 success: "false", // Wrapped in quotes for ExtractString helper
-                message: `Cannot start session. A minimum of 11 seconds is required to initialize Decart AI pipelines. (You have ${dbSeconds}s)`
+                message: `Cannot start session. A minimum of 11 seconds is required to initialize Origin-Cam AI. (You have ${dbSeconds}s)`
             });
         }
 
