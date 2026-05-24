@@ -11,7 +11,6 @@ router.post("/", async (req, res) => {
 
         const { token, duration_limit_sec } = req.body;
         if (!token) {
-            // 🌟 FIX: Return a clean 200 with quoted success strings for your C++ custom parser
             return res.json({ success: "false", message: "Missing authorization token." });
         }
 
@@ -34,12 +33,10 @@ router.post("/", async (req, res) => {
         if (existingSession) {
             console.log(`⚠️ Conflict detected for user ${userId}. Active session ID: ${existingSession.sessionId}`);
 
-            // Run finalize in the background without blocking the response thread
             finalizeSession(existingSession.sessionId, "manual", false)
                 .then(() => console.log(`🔄 Background auto-cleanup of ${existingSession.sessionId} finished.`))
                 .catch(err => console.log(`⚠️ Background cleanup notice:`, err.message));
 
-            // Explicitly wipe the map instantly so memory is 100% clear right now
             clearUserSession(userId);
         }
 
@@ -48,7 +45,7 @@ router.post("/", async (req, res) => {
         // ====================================
         const { data: dbUser, error: dbError } = await supabase
             .from("users")
-            .select("remaining_seconds")
+            .select("remaining_seconds, status")
             .eq("id", userId)
             .single();
 
@@ -57,14 +54,20 @@ router.post("/", async (req, res) => {
             return res.json({ success: "false", message: "Could not fetch user billing data." });
         }
 
+        // 🌟 CHECK 1: Verify account status is active
+        if (dbUser.status !== true && dbUser.status !== "true") {
+            console.log(`🚫 Denied user ${userId}: Account is restricted/blocked.`);
+            return res.json({ success: "false", message: "Account already exists or restricted email, please use another email." });
+        }
+
         const dbSeconds = Number(dbUser.remaining_seconds || 0);
         const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 5);
 
-        // 🌟 10-SECOND EXPLICIT CHECK BLOCK (CRITICAL CORRECTION)
+        // 🌟 CHECK 2: Minimum 10-Second Balance Gate
         if (dbSeconds <= 10) {
             console.log(`❌ Denied user ${userId}: Insufficient balance for initialization (${dbSeconds}s available).`);
             return res.json({
-                success: "false", // Wrapped in quotes for ExtractString helper
+                success: "false",
                 message: `Cannot start session. A minimum of 11 seconds is required to initialize Origin-Cam AI. (You have ${dbSeconds}s)`
             });
         }
@@ -74,28 +77,42 @@ router.post("/", async (req, res) => {
         // ====================================
         // 4. REQUEST DECART CLIENT TOKEN
         // ====================================
-        console.log(`🧠 Requesting Decart token with dynamic duration: ${targetedDurationCeiling}s`);
-        const decartResponse = await fetch("https://api.decart.ai/v1/client/tokens", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-api-key": process.env.DECART_API_KEY
-            },
-            body: JSON.stringify({
-                expiresIn: Math.max(300, targetedDurationCeiling),
-                allowedModels: ["lucy-2"],
-                constraints: {
-                    realtime: {
-                        maxSessionDuration: targetedDurationCeiling
-                    }
-                }
-            })
-        });
+        if (!process.env.DECART_API_KEY) {
+            console.log("❌ CRITICAL CONFIG ERROR: DECART_API_KEY environment variable is missing.");
+            return res.json({ success: "false", message: "Server configuration error: Missing infrastructure keys." });
+        }
 
-        const decartJson = await decartResponse.json();
-        if (!decartResponse.ok || !decartJson?.apiKey) {
-            console.log("❌ Decart token generation failed:", decartJson);
-            return res.json({ success: "false", message: "Failed creating Decart token." });
+        console.log(`🧠 Requesting Decart token with dynamic duration: ${targetedDurationCeiling}s`);
+
+        let decartJson;
+        try {
+            const decartResponse = await fetch("https://api.decart.ai/v1/client/tokens", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": process.env.DECART_API_KEY
+                },
+                body: JSON.stringify({
+                    expiresIn: Math.max(300, targetedDurationCeiling),
+                    allowedModels: ["lucy-2"],
+                    constraints: {
+                        realtime: {
+                            maxSessionDuration: targetedDurationCeiling
+                        }
+                    }
+                })
+            });
+
+            decartJson = await decartResponse.json();
+
+            if (!decartResponse.ok || !decartJson?.apiKey) {
+                console.log("❌ Decart provider rejected request:", decartJson);
+                return res.json({ success: "false", message: "External AI stream token allocation rejected." });
+            }
+        } catch (fetchErr) {
+            console.log("❌ DECART NETWORK TIMEOUT OR FAILURE:", fetchErr.message);
+            // 🌟 PREVENTS APP HANG: Immediately sends a response back to C++ if the external API is unreachable
+            return res.json({ success: "false", message: "Network connection timeout to AI model broker." });
         }
 
         // ====================================
@@ -115,13 +132,11 @@ router.post("/", async (req, res) => {
 
         const totalAllowedMs = (newSession.dbSeconds + newSession.graceSeconds) * 1000;
 
-        // Assign the timeout loop handle directly to the object configuration
         newSession.timeoutHandle = setTimeout(async () => {
             console.log(`🚨 CRASH DETECTED: Session ${newSession.sessionId} went dark for ${newSession.dbSeconds}s.`);
             await finalizeSession(newSession.sessionId, "timeout", false);
         }, totalAllowedMs);
 
-        // Commit to memory store with the live timer handle attached
         createSession(newSession);
 
         // ====================================
@@ -130,7 +145,7 @@ router.post("/", async (req, res) => {
         console.log(`✅ Session ${sessionId} generated successfully.`);
 
         return res.json({
-            success: "true", // 🌟 WRAPPED IN QUOTES FOR WINDOWS DESKTOP APP
+            success: "true",
             sessionId: sessionId,
             decartToken: decartJson.apiKey,
             remainingSeconds: dbSeconds
