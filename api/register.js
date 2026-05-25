@@ -1,5 +1,5 @@
 import express from "express";
-import { supabase } from "../lib/supabase.js";
+import { supabaseAdmin } from "../lib/supabase.js";
 
 const router = express.Router();
 
@@ -22,7 +22,7 @@ router.post("/", async (req, res) => {
         // =========================================================
         // We use admin.createUser so the user is instantly confirmed 
         // without forcing an email verification loop during testing.
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email: email,
             password: password,
             email_confirm: true, // Auto-confirming the email address
@@ -52,7 +52,7 @@ router.post("/", async (req, res) => {
         // =========================================================
         // 3. SYNC CREDENTIAL DETAILS TO YOUR PUBLIC USERS TABLE
         // =========================================================
-        const { error: dbError } = await supabase
+        const { error: dbError } = await supabaseAdmin
             .from("users")
             .insert([
                 {
@@ -68,7 +68,7 @@ router.post("/", async (req, res) => {
             console.error("❌ Profile table synchronization failed:", dbError.message);
 
             // Rollback auth creation if public entry injection fails to prevent ghost profiles
-            await supabase.auth.admin.deleteUser(authId);
+            await supabaseAdmin.auth.admin.deleteUser(authId);
 
             return res.json({
                 success: "false",
@@ -80,7 +80,7 @@ router.post("/", async (req, res) => {
         // 4. SIGN THE USER IN TO GENERATE WEBSITES COMPATIBLE JWT
         // =========================================================
         // Now that the structural tables are mapped, log them in to fetch the token assets
-        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+        const { data: loginData, error: loginError } = await supabaseAdmin.auth.signInWithPassword({
             email: email,
             password: password
         });
