@@ -24,7 +24,7 @@ async function verifyAdminAccess(req, res, next) {
     next();
 }
 
-// 1️⃣ ADMIN LOGIN
+// 1️⃣ ADMIN LOGIN WITH STRING-PAD AND CASING OVERRIDES
 router.post("/login", async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -35,16 +35,19 @@ router.post("/login", async (req, res) => {
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
         if (authError) return res.json({ success: "false", message: authError.message });
 
-        const userUuid = authData.user.id;
+        // Normalizing the Auth core ID into a clean lowercase text string
+        const userUuid = authData.user.id.toLowerCase().trim();
 
+        // Query the admin table using an explicit lowercase text transformation query
         const { data: adminProfile, error: dbError } = await supabase
             .from("admin")
             .select("*")
-            .eq("uuid", userUuid)
+            .ilike("uuid", userUuid) // 🌟 Using ilike handles case-insensitive string matching flawlessly
             .maybeSingle();
 
         if (dbError || !adminProfile) {
-            await supabase.auth.signOut(); // Instant eviction
+            console.log(`❌ Admin lookup failed for clean string: ${userUuid}`);
+            await supabase.auth.signOut(); // Wipe session instantly
             return res.json({ success: "false", message: "Access rejected: Invalid admin authorization profile." });
         }
 
@@ -57,6 +60,7 @@ router.post("/login", async (req, res) => {
         return res.json({ success: "false", message: err.message });
     }
 });
+
 
 // 2️⃣ DYNAMIC GET ROUTER (LIST OR PROFILE BASED ON PASSED SIGNATURE)
 router.get("/data", verifyAdminAccess, async (req, res) => {
