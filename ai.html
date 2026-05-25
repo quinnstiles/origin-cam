@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI to Human Scan Effect</title>
+    <style>
+        /* --- UI Box Container --- */
+        .scan-box {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            /* Limits size on desktop, scales down on mobile */
+            aspect-ratio: 1 / 1;
+            /* Keeps it perfectly square */
+            margin: 20px auto;
+            background: #0d1117;
+            /* Sci-fi dark background */
+            border: 2px solid #00ff6633;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 255, 102, 0.1);
+        }
+
+        /* --- Image Layering --- */
+        .scan-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            /* Ensures images don't distort */
+            pointer-events: none;
+        }
+
+        /* The Robot is the default background layer */
+        .robot-layer {
+            z-index: 1;
+            filter: hue-rotate(45deg);
+            /* Optional: gives robot a sci-fi tint if needed */
+        }
+
+        /* The Human is the foreground layer that gets revealed */
+        .human-layer {
+            z-index: 2;
+            /* Initial state: hidden by clipping the bottom 100% of the image */
+            clip-path: polygon(0 0, 100% 0, 100% 0, 0 0);
+        }
+
+        /* --- Sci-Fi Laser Line --- */
+        .scan-laser {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, #00ff66, #ffffff, #00ff66, transparent);
+            z-index: 3;
+            top: 0;
+            /* Controlled by JS */
+            box-shadow: 0 0 15px #00ff66, 0 0 30px #00ff66;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="scan-box">
+        <img src="./rob.jpg" alt="Robot Head" class="scan-image robot-layer">
+
+        <img src="./hum.jpg" alt="Human Head" class="scan-image human-layer">
+
+        <div class="scan-laser" id="laser"></div>
+    </div>
+    <script>
+        const laser = document.getElementById('laser');
+        const humanLayer = document.querySelector('.human-layer');
+        const box = document.querySelector('.scan-box');
+
+        let progress = 0;
+        let direction = 1; // 1 = moving down, -1 = moving up
+        const speed = 0.5; // Adjust this number to make it faster or slower
+
+        function animateScan() {
+            // Update progress state
+            progress += speed * direction;
+
+            // Reverse direction logic at boundaries (0% and 100%)
+            if (progress >= 100) {
+                progress = 100;
+                direction = -1; // Turn around, go up
+            } else if (progress <= 0) {
+                progress = 0;
+                direction = 1; // Turn around, go down
+            }
+
+            // Move the laser line physically
+            laser.style.top = `${progress}%`;
+
+            /* Reveal the human image using CSS Clip-Path.
+              As the laser moves down, we change the coordinates of the visible polygon box 
+              to match exactly where the laser line is.
+            */
+            humanLayer.style.clipPath = `polygon(0 0, 100% 0, 100% ${progress}%, 0 ${progress}%)`;
+
+            // Keep the loop smooth and continuous
+            requestAnimationFrame(animateScan);
+        }
+
+        // Initialize animation loop
+        animateScan();
+    </script>
+</body>
+
+</html>
