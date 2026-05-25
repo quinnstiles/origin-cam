@@ -23,6 +23,7 @@ import profileRoute from "./api/profile.js";
 
 import { getAllSessions } from "./lib/session-store.js";
 import { finalizeSession } from "./lib/finalizeSession.js";
+import adminChildRoute from "./api/admin-child.js";
 
 // ========================================
 // APP
@@ -49,7 +50,7 @@ app.use("/api/system-check", systemCheckRoute);
 // 🌟 NEW: Mount your web onboarding and verification gateways
 app.use("/api/register", registerRoute); // Maps directly to /api/register
 app.use("/api/login", loginRoute);       // Maps directly to /api/login (and /api/forgot-password if structured inside loginRoute)
-
+app.use("/api/admin", adminChildRoute);
 // Mount profile and ledger tracking tools securely
 app.use("/api", profileRoute);
 // ========================================
