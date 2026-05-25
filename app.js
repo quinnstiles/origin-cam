@@ -47,11 +47,11 @@ app.use("/api/end-session", endSessionRoute);
 app.use("/api/system-check", systemCheckRoute);
 
 // 🌟 NEW: Mount your web onboarding and verification gateways
-app.use("/api/register", registerRoute);
-app.use("/api", loginRoute); // Mounts /login and /forgot-password cleanly under /api/login & /api/forgot-password
+app.use("/api/register", registerRoute); // Maps directly to /api/register
+app.use("/api/login", loginRoute);       // Maps directly to /api/login (and /api/forgot-password if structured inside loginRoute)
 
 // Mount profile and ledger tracking tools securely
-app.use("/api", profileRoute); // Mounts /api/profile and /api/profile/update-name
+app.use("/api", profileRoute);
 // ========================================
 // HEALTH CHECK
 // ========================================
