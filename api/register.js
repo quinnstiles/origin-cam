@@ -61,7 +61,6 @@ router.post("/", async (req, res) => {
                     name: name,
                     signature: signature,
                     remaining_seconds: 0,
-                    created_at: new Date().toISOString()
                 }
             ]);
 
