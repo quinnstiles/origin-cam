@@ -24,7 +24,7 @@ import profileRoute from "./api/profile.js";
 import { getAllSessions } from "./lib/session-store.js";
 import { finalizeSession } from "./lib/finalizeSession.js";
 import adminChildRoute from "./api/admin-child.js";
-
+import adminLoginRoute from "./api/admin-login.js";
 // ========================================
 // APP
 // ========================================
@@ -46,7 +46,7 @@ app.use("/api/auth", authRoute);
 app.use("/api/start-session", startSessionRoute);
 app.use("/api/end-session", endSessionRoute);
 app.use("/api/system-check", systemCheckRoute);
-
+app.use("/api/admin-login", adminLoginRoute);
 // 🌟 NEW: Mount your web onboarding and verification gateways
 app.use("/api/register", registerRoute); // Maps directly to /api/register
 app.use("/api/login", loginRoute);       // Maps directly to /api/login (and /api/forgot-password if structured inside loginRoute)
