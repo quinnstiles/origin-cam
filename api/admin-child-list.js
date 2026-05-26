@@ -163,9 +163,9 @@ router.get(
                 await supabaseAdmin
                     .from("users")
                     .select("*")
-                    .eq(
+                    .ilike(
                         "signature",
-                        signature.trim().toLowerCase()
+                        signature.trim()
                     )
                     .order(
                         "created_at",
