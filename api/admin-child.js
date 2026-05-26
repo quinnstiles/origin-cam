@@ -171,8 +171,7 @@ router.post("/login", async (req, res) => {
 /* =========================================================
    2️⃣ DYNAMIC DATA ENDPOINT
 ========================================================= */
-router.get("/data", verifyAdminAccess, async (req, res) => {
-
+router.get("/data", async (req, res) => {
     try {
 
         const {
@@ -181,15 +180,25 @@ router.get("/data", verifyAdminAccess, async (req, res) => {
             signature
         } = req.query;
 
-        if (!type || !signature) {
+        // =====================================================
+        // VALIDATION
+        // =====================================================
+        if (!type) {
             return res.json({
                 success: "false",
-                message: "Missing required parameters."
+                message: "Missing type parameter."
+            });
+        }
+
+        if (!signature) {
+            return res.json({
+                success: "false",
+                message: "Missing signature parameter."
             });
         }
 
         // =====================================================
-        // LIST USERS
+        // FETCH ALL USERS WITH SIGNATURE
         // =====================================================
         if (type === "list") {
 
@@ -198,20 +207,32 @@ router.get("/data", verifyAdminAccess, async (req, res) => {
                     .from("users")
                     .select("*")
                     .eq("signature", signature)
-                    .order("created_at", { ascending: false });
+                    .order("created_at", {
+                        ascending: false
+                    });
 
-            if (error) throw error;
+            if (error) {
+                throw error;
+            }
 
             return res.json({
                 success: "true",
+                total: data.length,
                 data
             });
         }
 
         // =====================================================
-        // SINGLE USER PROFILE
+        // FETCH SINGLE USER PROFILE
         // =====================================================
         if (type === "profile") {
+
+            if (!uuid) {
+                return res.json({
+                    success: "false",
+                    message: "Missing uuid parameter."
+                });
+            }
 
             const { data, error } =
                 await supabaseAdmin
@@ -221,7 +242,16 @@ router.get("/data", verifyAdminAccess, async (req, res) => {
                     .eq("signature", signature)
                     .maybeSingle();
 
-            if (error) throw error;
+            if (error) {
+                throw error;
+            }
+
+            if (!data) {
+                return res.json({
+                    success: "false",
+                    message: "User not found."
+                });
+            }
 
             return res.json({
                 success: "true",
@@ -231,12 +261,12 @@ router.get("/data", verifyAdminAccess, async (req, res) => {
 
         return res.json({
             success: "false",
-            message: "Invalid type."
+            message: "Invalid type parameter."
         });
 
     } catch (err) {
 
-        console.error("❌ ADMIN DATA FAILURE:", err);
+        console.error("ADMIN DATA ROUTE FAILURE:", err);
 
         return res.json({
             success: "false",
@@ -345,6 +375,29 @@ router.get("/profile", verifyAdminAccess, async (req, res) => {
         data: req.admin
     });
 
+});
+
+
+// =========================================================
+// 6️⃣ ADMIN LOGOUT
+// =========================================================
+router.post("/logout", verifyAdminAccess, async (req, res) => {
+    try {
+
+        return res.json({
+            success: "true",
+            message: "Admin logged out successfully."
+        });
+
+    } catch (err) {
+
+        console.error("ADMIN LOGOUT FAILURE:", err);
+
+        return res.json({
+            success: "false",
+            message: err.message
+        });
+    }
 });
 
 export default router;
