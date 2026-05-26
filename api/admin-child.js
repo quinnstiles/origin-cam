@@ -36,13 +36,13 @@ async function verifyAdminAccess(req, res, next) {
         }
 
         // =====================================================
-        // VERIFY USER EXISTS INSIDE ADMIN TABLE
+        // VERIFY ADMIN EMAIL + SIGNATURE
         // =====================================================
         const { data: adminRow, error: adminError } =
             await supabaseAdmin
                 .from("admin")
                 .select("*")
-                .eq("uuid", user.id)
+                .eq("email", user.email)
                 .maybeSingle();
 
         if (adminError || !adminRow) {
@@ -53,11 +53,12 @@ async function verifyAdminAccess(req, res, next) {
         }
 
         req.admin = adminRow;
-        req.adminUuid = user.id;
+        req.adminEmail = user.email;
 
         next();
 
     } catch (err) {
+
         console.error("ADMIN AUTH MIDDLEWARE FAILURE:", err);
 
         return res.status(500).json({
@@ -74,12 +75,16 @@ async function verifyAdminAccess(req, res, next) {
 router.post("/login", async (req, res) => {
     try {
 
-        const { email, password } = req.body;
+        const {
+            email,
+            password,
+            signature
+        } = req.body;
 
-        if (!email || !password) {
+        if (!email || !password || !signature) {
             return res.json({
                 success: "false",
-                message: "Email and password are required."
+                message: "Email, password and signature are required."
             });
         }
 
@@ -99,26 +104,36 @@ router.post("/login", async (req, res) => {
             });
         }
 
-        const userUuid = authData.user.id;
-
         // =====================================================
-        // VERIFY ADMIN EXISTS
+        // VERIFY EMAIL EXISTS IN ADMIN TABLE
         // =====================================================
         const { data: adminProfile, error: adminError } =
             await supabaseAdmin
                 .from("admin")
                 .select("*")
-                .eq("uuid", userUuid)
+                .eq("email", email)
                 .maybeSingle();
 
         if (adminError || !adminProfile) {
 
-            // destroy session
             await supabaseAdmin.auth.signOut();
 
             return res.json({
                 success: "false",
                 message: "invalid admin"
+            });
+        }
+
+        // =====================================================
+        // VERIFY SIGNATURE MATCH
+        // =====================================================
+        if (adminProfile.signature !== signature) {
+
+            await supabaseAdmin.auth.signOut();
+
+            return res.json({
+                success: "false",
+                message: "invalid admin signature"
             });
         }
 
@@ -142,13 +157,15 @@ router.post("/login", async (req, res) => {
 
 /* =========================================================
    2️⃣ DYNAMIC DATA ENDPOINT
-   type=list
-   type=profile
 ========================================================= */
 router.get("/data", verifyAdminAccess, async (req, res) => {
     try {
 
-        const { type, uuid, signature } = req.query;
+        const {
+            type,
+            uuid,
+            signature
+        } = req.query;
 
         if (!type) {
             return res.json({
@@ -185,7 +202,7 @@ router.get("/data", verifyAdminAccess, async (req, res) => {
         }
 
         /* =====================================================
-           FETCH SINGLE PROFILE
+           FETCH SINGLE USER PROFILE
         ===================================================== */
         if (type === "profile") {
 
@@ -310,7 +327,10 @@ router.put("/user/update", verifyAdminAccess, async (req, res) => {
 router.delete("/user/delete", verifyAdminAccess, async (req, res) => {
     try {
 
-        const { uuid, signature } = req.body;
+        const {
+            uuid,
+            signature
+        } = req.body;
 
         if (!uuid || !signature) {
             return res.json({
@@ -338,7 +358,7 @@ router.delete("/user/delete", verifyAdminAccess, async (req, res) => {
         }
 
         // =====================================================
-        // DELETE PUBLIC USER ROW
+        // DELETE PUBLIC USER
         // =====================================================
         const { error: deleteError } =
             await supabaseAdmin
@@ -355,10 +375,7 @@ router.delete("/user/delete", verifyAdminAccess, async (req, res) => {
             await supabaseAdmin.auth.admin.deleteUser(uuid);
 
         if (authDeleteError) {
-            console.warn(
-                "AUTH DELETE WARNING:",
-                authDeleteError.message
-            );
+            console.warn("AUTH DELETE WARNING:", authDeleteError.message);
         }
 
         return res.json({
@@ -388,7 +405,7 @@ router.get("/profile", verifyAdminAccess, async (req, res) => {
             await supabaseAdmin
                 .from("admin")
                 .select("*")
-                .eq("uuid", req.adminUuid)
+                .eq("email", req.adminEmail)
                 .maybeSingle();
 
         if (error) throw error;
