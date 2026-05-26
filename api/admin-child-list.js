@@ -165,7 +165,7 @@ router.get(
                     .select("*")
                     .eq(
                         "signature",
-                        "origin"
+                        signature.trim().toLowerCase()
                     )
                     .order(
                         "created_at",
