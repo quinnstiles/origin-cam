@@ -57,6 +57,10 @@ async function verifyAdminAccess(req, res, next) {
         } =
             await supabaseAdmin.auth.getUser(token);
 
+        console.log("AUTH DATA:", authData);
+        console.log("AUTH ERROR:", authError);
+        console.log("USER:", user);
+
         const user =
             authData?.user;
 
@@ -131,6 +135,9 @@ async function verifyAdminAccess(req, res, next) {
         // =====================================================
         req.admin =
             adminProfiles[0];
+
+        console.log("VERIFY ADMIN ACCESS SUCCESS");
+        console.log("================================");
 
         next();
 
