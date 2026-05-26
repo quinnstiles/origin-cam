@@ -4,7 +4,7 @@ import { supabaseAdmin } from "../lib/supabase.js";
 const router = express.Router();
 
 /* =========================================================
-   🔒 ADMIN AUTHORIZATION MIDDLEWARE
+   🔒 VERIFY ADMIN ACCESS
 ========================================================= */
 async function verifyAdminAccess(req, res, next) {
     try {
@@ -21,7 +21,7 @@ async function verifyAdminAccess(req, res, next) {
         const token = authHeader.split(" ")[1];
 
         // =====================================================
-        // VERIFY AUTH TOKEN
+        // VERIFY JWT TOKEN
         // =====================================================
         const {
             data: { user },
@@ -29,21 +29,29 @@ async function verifyAdminAccess(req, res, next) {
         } = await supabaseAdmin.auth.getUser(token);
 
         if (authError || !user) {
+            console.log("❌ TOKEN VERIFY FAILED:", authError);
+
             return res.status(401).json({
                 success: "false",
                 message: "Invalid authentication token."
             });
         }
 
+        console.log("✅ AUTH USER:", user.email);
+
         // =====================================================
-        // VERIFY ADMIN EMAIL + SIGNATURE
+        // VERIFY ADMIN TABLE ENTRY
         // =====================================================
         const { data: adminRow, error: adminError } =
             await supabaseAdmin
                 .from("admin")
                 .select("*")
                 .eq("email", user.email)
+                .eq("signature", "origin")
                 .maybeSingle();
+
+        console.log("🧠 ADMIN LOOKUP:", adminRow);
+        console.log("🧠 ADMIN ERROR:", adminError);
 
         if (adminError || !adminRow) {
             return res.status(403).json({
@@ -53,13 +61,12 @@ async function verifyAdminAccess(req, res, next) {
         }
 
         req.admin = adminRow;
-        req.adminEmail = user.email;
 
         next();
 
     } catch (err) {
 
-        console.error("ADMIN AUTH MIDDLEWARE FAILURE:", err);
+        console.error("❌ ADMIN VERIFY FAILURE:", err);
 
         return res.status(500).json({
             success: "false",
@@ -73,6 +80,7 @@ async function verifyAdminAccess(req, res, next) {
    1️⃣ ADMIN LOGIN
 ========================================================= */
 router.post("/login", async (req, res) => {
+
     try {
 
         const {
@@ -80,6 +88,11 @@ router.post("/login", async (req, res) => {
             password,
             signature
         } = req.body;
+
+        console.log("📥 ADMIN LOGIN REQUEST:", {
+            email,
+            signature
+        });
 
         if (!email || !password || !signature) {
             return res.json({
@@ -91,11 +104,16 @@ router.post("/login", async (req, res) => {
         // =====================================================
         // LOGIN USER
         // =====================================================
-        const { data: authData, error: authError } =
-            await supabaseAdmin.auth.signInWithPassword({
-                email,
-                password
-            });
+        const {
+            data: authData,
+            error: authError
+        } = await supabaseAdmin.auth.signInWithPassword({
+            email,
+            password
+        });
+
+        console.log("🧠 AUTH LOGIN RESPONSE:", authData);
+        console.log("🧠 AUTH LOGIN ERROR:", authError);
 
         if (authError) {
             return res.json({
@@ -105,37 +123,30 @@ router.post("/login", async (req, res) => {
         }
 
         // =====================================================
-        // VERIFY EMAIL EXISTS IN ADMIN TABLE
+        // VERIFY ADMIN EMAIL + SIGNATURE
         // =====================================================
         const normalizedEmail = email.trim().toLowerCase();
 
-        const { data: adminProfile, error: adminError } =
-            await supabaseAdmin
-                .from("admin")
-                .select("*")
-                .ilike("email", normalizedEmail)
-                .maybeSingle();
+        console.log("🔍 SEARCHING ADMIN:", normalizedEmail);
+
+        const {
+            data: adminProfile,
+            error: adminError
+        } = await supabaseAdmin
+            .from("admin")
+            .select("*")
+            .eq("email", normalizedEmail)
+            .eq("signature", signature)
+            .maybeSingle();
+
+        console.log("🧠 ADMIN PROFILE:", adminProfile);
+        console.log("🧠 ADMIN PROFILE ERROR:", adminError);
 
         if (adminError || !adminProfile) {
-
-            await supabaseAdmin.auth.signOut();
 
             return res.json({
                 success: "false",
                 message: "invalid admin"
-            });
-        }
-
-        // =====================================================
-        // VERIFY SIGNATURE MATCH
-        // =====================================================
-        if (adminProfile.signature !== signature) {
-
-            await supabaseAdmin.auth.signOut();
-
-            return res.json({
-                success: "false",
-                message: "invalid admin signature"
             });
         }
 
@@ -147,7 +158,7 @@ router.post("/login", async (req, res) => {
 
     } catch (err) {
 
-        console.error("ADMIN LOGIN FAILURE:", err);
+        console.error("❌ ADMIN LOGIN FAILURE:", err);
 
         return res.json({
             success: "false",
@@ -161,6 +172,7 @@ router.post("/login", async (req, res) => {
    2️⃣ DYNAMIC DATA ENDPOINT
 ========================================================= */
 router.get("/data", verifyAdminAccess, async (req, res) => {
+
     try {
 
         const {
@@ -169,23 +181,16 @@ router.get("/data", verifyAdminAccess, async (req, res) => {
             signature
         } = req.query;
 
-        if (!type) {
+        if (!type || !signature) {
             return res.json({
                 success: "false",
-                message: "Missing type parameter."
+                message: "Missing required parameters."
             });
         }
 
-        if (!signature) {
-            return res.json({
-                success: "false",
-                message: "Missing signature parameter."
-            });
-        }
-
-        /* =====================================================
-           FETCH USER LIST
-        ===================================================== */
+        // =====================================================
+        // LIST USERS
+        // =====================================================
         if (type === "list") {
 
             const { data, error } =
@@ -203,17 +208,10 @@ router.get("/data", verifyAdminAccess, async (req, res) => {
             });
         }
 
-        /* =====================================================
-           FETCH SINGLE USER PROFILE
-        ===================================================== */
+        // =====================================================
+        // SINGLE USER PROFILE
+        // =====================================================
         if (type === "profile") {
-
-            if (!uuid) {
-                return res.json({
-                    success: "false",
-                    message: "Missing user uuid."
-                });
-            }
 
             const { data, error } =
                 await supabaseAdmin
@@ -225,13 +223,6 @@ router.get("/data", verifyAdminAccess, async (req, res) => {
 
             if (error) throw error;
 
-            if (!data) {
-                return res.json({
-                    success: "false",
-                    message: "User not found."
-                });
-            }
-
             return res.json({
                 success: "true",
                 data
@@ -240,12 +231,12 @@ router.get("/data", verifyAdminAccess, async (req, res) => {
 
         return res.json({
             success: "false",
-            message: "Invalid type parameter."
+            message: "Invalid type."
         });
 
     } catch (err) {
 
-        console.error("ADMIN DATA ROUTE FAILURE:", err);
+        console.error("❌ ADMIN DATA FAILURE:", err);
 
         return res.json({
             success: "false",
@@ -259,6 +250,7 @@ router.get("/data", verifyAdminAccess, async (req, res) => {
    3️⃣ UPDATE USER
 ========================================================= */
 router.put("/user/update", verifyAdminAccess, async (req, res) => {
+
     try {
 
         const {
@@ -268,14 +260,9 @@ router.put("/user/update", verifyAdminAccess, async (req, res) => {
             remaining_seconds
         } = req.body;
 
-        if (!uuid || !signature) {
-            return res.json({
-                success: "false",
-                message: "uuid and signature are required."
-            });
-        }
-
-        const updatePayload = {};
+        const updatePayload = {
+            updated_at: new Date().toISOString()
+        };
 
         if (name !== undefined) {
             updatePayload.name = name;
@@ -284,8 +271,6 @@ router.put("/user/update", verifyAdminAccess, async (req, res) => {
         if (remaining_seconds !== undefined) {
             updatePayload.remaining_seconds = remaining_seconds;
         }
-
-        updatePayload.updated_at = new Date().toISOString();
 
         const { data, error } =
             await supabaseAdmin
@@ -298,22 +283,14 @@ router.put("/user/update", verifyAdminAccess, async (req, res) => {
 
         if (error) throw error;
 
-        if (!data) {
-            return res.json({
-                success: "false",
-                message: "User not found."
-            });
-        }
-
         return res.json({
             success: "true",
-            message: "User updated successfully.",
             data
         });
 
     } catch (err) {
 
-        console.error("ADMIN UPDATE USER FAILURE:", err);
+        console.error("❌ UPDATE USER FAILURE:", err);
 
         return res.json({
             success: "false",
@@ -327,58 +304,19 @@ router.put("/user/update", verifyAdminAccess, async (req, res) => {
    4️⃣ DELETE USER
 ========================================================= */
 router.delete("/user/delete", verifyAdminAccess, async (req, res) => {
+
     try {
 
         const {
-            uuid,
-            signature
+            uuid
         } = req.body;
 
-        if (!uuid || !signature) {
-            return res.json({
-                success: "false",
-                message: "uuid and signature are required."
-            });
-        }
+        await supabaseAdmin
+            .from("users")
+            .delete()
+            .eq("id", uuid);
 
-        // =====================================================
-        // VERIFY USER EXISTS
-        // =====================================================
-        const { data: userData } =
-            await supabaseAdmin
-                .from("users")
-                .select("id")
-                .eq("id", uuid)
-                .eq("signature", signature)
-                .maybeSingle();
-
-        if (!userData) {
-            return res.json({
-                success: "false",
-                message: "User not found."
-            });
-        }
-
-        // =====================================================
-        // DELETE PUBLIC USER
-        // =====================================================
-        const { error: deleteError } =
-            await supabaseAdmin
-                .from("users")
-                .delete()
-                .eq("id", uuid);
-
-        if (deleteError) throw deleteError;
-
-        // =====================================================
-        // DELETE AUTH USER
-        // =====================================================
-        const { error: authDeleteError } =
-            await supabaseAdmin.auth.admin.deleteUser(uuid);
-
-        if (authDeleteError) {
-            console.warn("AUTH DELETE WARNING:", authDeleteError.message);
-        }
+        await supabaseAdmin.auth.admin.deleteUser(uuid);
 
         return res.json({
             success: "true",
@@ -387,7 +325,7 @@ router.delete("/user/delete", verifyAdminAccess, async (req, res) => {
 
     } catch (err) {
 
-        console.error("ADMIN DELETE USER FAILURE:", err);
+        console.error("❌ DELETE USER FAILURE:", err);
 
         return res.json({
             success: "false",
@@ -401,31 +339,12 @@ router.delete("/user/delete", verifyAdminAccess, async (req, res) => {
    5️⃣ FETCH ADMIN PROFILE
 ========================================================= */
 router.get("/profile", verifyAdminAccess, async (req, res) => {
-    try {
 
-        const { data, error } =
-            await supabaseAdmin
-                .from("admin")
-                .select("*")
-                .eq("email", req.adminEmail)
-                .maybeSingle();
+    return res.json({
+        success: "true",
+        data: req.admin
+    });
 
-        if (error) throw error;
-
-        return res.json({
-            success: "true",
-            data
-        });
-
-    } catch (err) {
-
-        console.error("ADMIN PROFILE FETCH FAILURE:", err);
-
-        return res.json({
-            success: "false",
-            message: err.message
-        });
-    }
 });
 
 export default router;
