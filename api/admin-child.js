@@ -202,11 +202,13 @@ router.get("/data", async (req, res) => {
         // =====================================================
         if (type === "list") {
 
+            console.log("SIGNATURE RECEIVED:", signature);
+
             const { data, error } =
                 await supabaseAdmin
                     .from("users")
                     .select("*")
-                    .eq("signature", signature)
+                    .ilike("signature", signature.trim())
                     .order("created_at", {
                         ascending: false
                     });
@@ -214,6 +216,9 @@ router.get("/data", async (req, res) => {
             if (error) {
                 throw error;
             }
+
+            console.log("TOTAL USERS FOUND:", data?.length);
+            console.log("USERS:", data);
 
             return res.json({
                 success: "true",
