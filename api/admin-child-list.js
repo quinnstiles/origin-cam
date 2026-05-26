@@ -10,6 +10,9 @@ async function verifyAdminAccess(req, res, next) {
 
     try {
 
+        // =====================================================
+        // AUTH HEADER
+        // =====================================================
         const authHeader =
             req.headers.authorization;
 
@@ -25,28 +28,37 @@ async function verifyAdminAccess(req, res, next) {
             });
         }
 
+        // =====================================================
+        // TOKEN
+        // =====================================================
         const token =
             authHeader.split(" ")[1];
 
-        // =====================================================
-        // VERIFY USER
-        // =====================================================
-        const {
-            data: adminProfiles,
-            error: adminError
-        } =
-            await supabaseAdmin
-                .from("admin")
-                .select("*")
-                .eq(
-                    "signature",
-                    "origin"
-                );
+        if (!token) {
+
+            return res.status(401).json({
+                success: false,
+                message:
+                    "Missing authentication token."
+            });
+        }
 
         console.log(
             "🧠 TOKEN:",
             token?.slice(0, 40)
         );
+
+        // =====================================================
+        // VERIFY USER FROM SUPABASE AUTH
+        // =====================================================
+        const {
+            data: authData,
+            error: authError
+        } =
+            await supabaseAdmin.auth.getUser(token);
+
+        const user =
+            authData?.user;
 
         console.log(
             "🧠 VERIFY USER:",
@@ -58,18 +70,8 @@ async function verifyAdminAccess(req, res, next) {
             authError
         );
 
-        if (!token) {
-
-            return res.status(401).json({
-                success: false,
-                message:
-                    "Missing authentication token."
-            });
-        }
-
         if (
             authError ||
-            !data ||
             !user
         ) {
 
@@ -93,6 +95,8 @@ async function verifyAdminAccess(req, res, next) {
                 .eq(
                     "email",
                     user.email
+                        .trim()
+                        .toLowerCase()
                 )
                 .eq(
                     "signature",
@@ -122,6 +126,9 @@ async function verifyAdminAccess(req, res, next) {
             });
         }
 
+        // =====================================================
+        // STORE ADMIN
+        // =====================================================
         req.admin =
             adminProfiles[0];
 
@@ -152,7 +159,8 @@ router.get(
 
         return res.json({
             success: true,
-            admin: req.admin
+            admin:
+                req.admin
         });
     }
 );
@@ -175,6 +183,9 @@ router.get(
                 signature
             );
 
+            // =================================================
+            // VALIDATION
+            // =================================================
             if (!signature) {
 
                 return res.json({
@@ -183,6 +194,14 @@ router.get(
                         "Missing signature parameter."
                 });
             }
+
+            // =================================================
+            // NORMALIZE SIGNATURE
+            // =================================================
+            const normalizedSignature =
+                signature
+                    .trim()
+                    .toLowerCase();
 
             // =================================================
             // FETCH USERS
@@ -205,7 +224,7 @@ router.get(
                     `)
                     .eq(
                         "signature",
-                        signature.trim()
+                        normalizedSignature
                     )
                     .order(
                         "created_at",
@@ -233,6 +252,9 @@ router.get(
                 throw error;
             }
 
+            // =================================================
+            // SUCCESS
+            // =================================================
             return res.json({
                 success: true,
                 total:
