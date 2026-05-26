@@ -50,7 +50,7 @@ app.use("/api/system-check", systemCheckRoute);
 // 🌟 NEW: Mount your web onboarding and verification gateways
 app.use("/api/register", registerRoute); // Maps directly to /api/register
 app.use("/api/login", loginRoute);       // Maps directly to /api/login (and /api/forgot-password if structured inside loginRoute)
-app.use("/api/admin", adminChildRoute);
+app.use("/api/admin-child", adminChildRoute);
 // Mount profile and ledger tracking tools securely
 app.use("/api", profileRoute);
 // ========================================

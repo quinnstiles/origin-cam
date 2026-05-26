@@ -587,11 +587,6 @@ router.post("/logout", verifyAdminAccess, async (req, res) => {
 
     try {
 
-        // =====================================================
-        // OPTIONAL SIGN OUT
-        // =====================================================
-        await supabaseAdmin.auth.signOut();
-
         return res.json({
             success: "true",
             message: "Admin logged out successfully."
