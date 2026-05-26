@@ -32,10 +32,21 @@ async function verifyAdminAccess(req, res, next) {
         // VERIFY USER
         // =====================================================
         const {
-            data: { user },
-            error: authError
+            data: adminProfiles,
+            error: adminError
         } =
-            await supabaseAdmin.auth.getUser(token);
+            await supabaseAdmin
+                .from("admin")
+                .select("*")
+                .eq(
+                    "signature",
+                    "origin"
+                );
+
+        console.log(
+            "🧠 TOKEN:",
+            token?.slice(0, 40)
+        );
 
         console.log(
             "🧠 VERIFY USER:",
@@ -47,8 +58,18 @@ async function verifyAdminAccess(req, res, next) {
             authError
         );
 
+        if (!token) {
+
+            return res.status(401).json({
+                success: false,
+                message:
+                    "Missing authentication token."
+            });
+        }
+
         if (
             authError ||
+            !data ||
             !user
         ) {
 
