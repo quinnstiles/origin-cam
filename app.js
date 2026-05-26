@@ -80,10 +80,7 @@ app.use(
     adminLoginRoute
 );
 
-app.use(
-    "/api/admin-child",
-    adminChildListRoute
-);
+
 
 app.use(
     "/api/admin-logout",

@@ -19,7 +19,7 @@ async function verifyAdminAccess(req, res, next) {
         ) {
 
             return res.status(401).json({
-                success: "false",
+                success: false,
                 message:
                     "Missing authorization token."
             });
@@ -29,15 +29,13 @@ async function verifyAdminAccess(req, res, next) {
             authHeader.split(" ")[1];
 
         // =====================================================
-        // VERIFY JWT TOKEN
+        // VERIFY USER
         // =====================================================
         const {
             data: { user },
             error: authError
         } =
-            await supabaseAdmin
-                .auth
-                .getUser(token);
+            await supabaseAdmin.auth.getUser(token);
 
         console.log(
             "🧠 VERIFY USER:",
@@ -55,17 +53,17 @@ async function verifyAdminAccess(req, res, next) {
         ) {
 
             return res.status(401).json({
-                success: "false",
+                success: false,
                 message:
                     "Invalid authentication token."
             });
         }
 
         // =====================================================
-        // VERIFY ADMIN TABLE
+        // VERIFY ADMIN EXISTS
         // =====================================================
         const {
-            data: adminProfile,
+            data: adminProfiles,
             error: adminError
         } =
             await supabaseAdmin
@@ -78,12 +76,11 @@ async function verifyAdminAccess(req, res, next) {
                 .eq(
                     "signature",
                     "origin"
-                )
-                .maybeSingle();
+                );
 
         console.log(
-            "🧠 ADMIN PROFILE:",
-            adminProfile
+            "🧠 ADMIN PROFILES:",
+            adminProfiles
         );
 
         console.log(
@@ -93,21 +90,19 @@ async function verifyAdminAccess(req, res, next) {
 
         if (
             adminError ||
-            !adminProfile
+            !adminProfiles ||
+            adminProfiles.length === 0
         ) {
 
             return res.status(401).json({
-                success: "false",
+                success: false,
                 message:
                     "invalid admin"
             });
         }
 
         req.admin =
-            adminProfile;
-
-        req.authUser =
-            user;
+            adminProfiles[0];
 
         next();
 
@@ -119,7 +114,7 @@ async function verifyAdminAccess(req, res, next) {
         );
 
         return res.status(500).json({
-            success: "false",
+            success: false,
             message:
                 err.message
         });
@@ -134,32 +129,10 @@ router.get(
     verifyAdminAccess,
     async (req, res) => {
 
-        try {
-
-            return res.json({
-                success: "true",
-                authenticated: true,
-
-                admin:
-                    req.admin,
-
-                authUser:
-                    req.authUser
-            });
-
-        } catch (err) {
-
-            console.error(
-                "❌ AUTH STATE FAILURE:",
-                err
-            );
-
-            return res.status(500).json({
-                success: "false",
-                message:
-                    err.message
-            });
-        }
+        return res.json({
+            success: true,
+            admin: req.admin
+        });
     }
 );
 
@@ -181,13 +154,10 @@ router.get(
                 signature
             );
 
-            // =================================================
-            // VALIDATION
-            // =================================================
             if (!signature) {
 
                 return res.json({
-                    success: "false",
+                    success: false,
                     message:
                         "Missing signature parameter."
                 });
@@ -202,8 +172,17 @@ router.get(
             } =
                 await supabaseAdmin
                     .from("users")
-                    .select("*")
-                    .ilike(
+                    .select(`
+                        id,
+                        email,
+                        name,
+                        remaining_seconds,
+                        created_at,
+                        updated_at,
+                        signature,
+                        status
+                    `)
+                    .eq(
                         "signature",
                         signature.trim()
                     )
@@ -220,21 +199,23 @@ router.get(
             );
 
             console.log(
+                "🧠 USERS DATA:",
+                data
+            );
+
+            console.log(
                 "🧠 FETCH ERROR:",
                 error
             );
 
             if (error) {
-
                 throw error;
             }
 
             return res.json({
-                success: "true",
-
+                success: true,
                 total:
                     data?.length || 0,
-
                 data:
                     data || []
             });
@@ -247,7 +228,7 @@ router.get(
             );
 
             return res.status(500).json({
-                success: "false",
+                success: false,
                 message:
                     err.message
             });
