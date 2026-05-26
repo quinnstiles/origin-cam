@@ -107,11 +107,13 @@ router.post("/login", async (req, res) => {
         // =====================================================
         // VERIFY EMAIL EXISTS IN ADMIN TABLE
         // =====================================================
+        const normalizedEmail = email.trim().toLowerCase();
+
         const { data: adminProfile, error: adminError } =
             await supabaseAdmin
                 .from("admin")
                 .select("*")
-                .eq("email", email)
+                .ilike("email", normalizedEmail)
                 .maybeSingle();
 
         if (adminError || !adminProfile) {
