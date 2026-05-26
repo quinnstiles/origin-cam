@@ -16,10 +16,13 @@ router.post("/login", async (req, res) => {
             signature
         } = req.body;
 
-        console.log("📥 ADMIN LOGIN REQUEST:", {
-            email,
-            signature
-        });
+        console.log(
+            "📥 ADMIN LOGIN REQUEST:",
+            {
+                email,
+                signature
+            }
+        );
 
         // =====================================================
         // VALIDATION
@@ -31,11 +34,21 @@ router.post("/login", async (req, res) => {
         ) {
 
             return res.json({
-                success: "false",
+                success: false,
                 message:
                     "Email, password and signature are required."
             });
         }
+
+        const normalizedEmail =
+            email
+                .trim()
+                .toLowerCase();
+
+        const normalizedSignature =
+            signature
+                .trim()
+                .toLowerCase();
 
         // =====================================================
         // LOGIN
@@ -45,13 +58,13 @@ router.post("/login", async (req, res) => {
             error: authError
         } =
             await supabaseAdmin.auth.signInWithPassword({
-                email,
+                email: normalizedEmail,
                 password
             });
 
         console.log(
-            "🧠 AUTH LOGIN:",
-            authData
+            "🧠 AUTH USER:",
+            authData?.user?.email
         );
 
         console.log(
@@ -59,23 +72,22 @@ router.post("/login", async (req, res) => {
             authError
         );
 
-        if (authError) {
+        if (
+            authError ||
+            !authData?.session
+        ) {
 
             return res.json({
-                success: "false",
+                success: false,
                 message:
-                    authError.message
+                    authError?.message ||
+                    "Authentication failed."
             });
         }
 
         // =====================================================
         // VERIFY ADMIN
         // =====================================================
-        const normalizedEmail =
-            email
-                .trim()
-                .toLowerCase();
-
         const {
             data: adminProfile,
             error: adminError
@@ -89,9 +101,9 @@ router.post("/login", async (req, res) => {
                 )
                 .eq(
                     "signature",
-                    signature
+                    normalizedSignature
                 )
-                .maybeSingle();
+                .single();
 
         console.log(
             "🧠 ADMIN PROFILE:",
@@ -109,44 +121,18 @@ router.post("/login", async (req, res) => {
         ) {
 
             return res.json({
-                success: "false",
+                success: false,
                 message:
                     "invalid admin"
             });
         }
 
         // =====================================================
-        // FETCH ADMIN USER ROW
+        // SUCCESS
         // =====================================================
-        const {
-            data: adminUser,
-            error: adminUserError
-        } =
-            await supabaseAdmin
-                .from("users")
-                .select("*")
-                .eq(
-                    "email",
-                    normalizedEmail
-                )
-                .eq(
-                    "signature",
-                    signature
-                )
-                .maybeSingle();
-
-        console.log(
-            "🧠 ADMIN USER:",
-            adminUser
-        );
-
-        console.log(
-            "🧠 ADMIN USER ERROR:",
-            adminUserError
-        );
-
         return res.json({
-            success: "true",
+
+            success: true,
 
             access_token:
                 authData.session.access_token,
@@ -157,9 +143,8 @@ router.post("/login", async (req, res) => {
             session:
                 authData.session,
 
-            adminProfile,
+            adminProfile
 
-            adminUser
         });
 
     } catch (err) {
@@ -169,8 +154,8 @@ router.post("/login", async (req, res) => {
             err
         );
 
-        return res.json({
-            success: "false",
+        return res.status(500).json({
+            success: false,
             message:
                 err.message
         });
