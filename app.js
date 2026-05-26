@@ -20,11 +20,12 @@ import heartbeatRouter from "./api/heartbeat.js";
 import registerRoute from "./api/register.js";
 import loginRoute from "./api/login.js";
 import profileRoute from "./api/profile.js";
-
+import adminChildListRoute from "./api/admin-child-list.js";
 import { getAllSessions } from "./lib/session-store.js";
 import { finalizeSession } from "./lib/finalizeSession.js";
 import adminChildRoute from "./api/admin-child.js";
 import adminLoginRoute from "./api/admin-login.js";
+import adminLogoutRoute from "./api/admin-logout.js";
 // ========================================
 // APP
 // ========================================
@@ -53,6 +54,16 @@ app.use("/api/login", loginRoute);       // Maps directly to /api/login (and /ap
 app.use("/api/admin-child", adminChildRoute);
 // Mount profile and ledger tracking tools securely
 app.use("/api", profileRoute);
+
+app.use(
+    "/api/admin-logout",
+    adminLogoutRoute
+);
+
+app.use(
+    "/api/admin-child",
+    adminChildListRoute
+);
 // ========================================
 // HEALTH CHECK
 // ========================================
