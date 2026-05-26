@@ -28,6 +28,9 @@ async function verifyAdminAccess(req, res, next) {
         const token =
             authHeader.split(" ")[1];
 
+        req.token =
+            token;
+
         // =====================================================
         // VERIFY TOKEN
         // =====================================================
@@ -106,6 +109,9 @@ async function verifyAdminAccess(req, res, next) {
         req.admin =
             adminProfile;
 
+        req.authUser =
+            user;
+
         next();
 
     } catch (err) {
@@ -132,6 +138,24 @@ router.post(
     async (req, res) => {
 
         try {
+
+            // =================================================
+            // INVALIDATE SESSION
+            // =================================================
+            const {
+                error: signOutError
+            } =
+                await supabaseAdmin
+                    .auth
+                    .admin
+                    .signOut(
+                        req.token
+                    );
+
+            console.log(
+                "🧠 SIGN OUT ERROR:",
+                signOutError
+            );
 
             return res.json({
                 success: "true",

@@ -29,7 +29,7 @@ async function verifyAdminAccess(req, res, next) {
             authHeader.split(" ")[1];
 
         // =====================================================
-        // VERIFY JWT
+        // VERIFY JWT TOKEN
         // =====================================================
         const {
             data: { user },
@@ -106,6 +106,9 @@ async function verifyAdminAccess(req, res, next) {
         req.admin =
             adminProfile;
 
+        req.authUser =
+            user;
+
         next();
 
     } catch (err) {
@@ -122,6 +125,43 @@ async function verifyAdminAccess(req, res, next) {
         });
     }
 }
+
+/* =========================================================
+   AUTH STATE
+========================================================= */
+router.get(
+    "/auth-state",
+    verifyAdminAccess,
+    async (req, res) => {
+
+        try {
+
+            return res.json({
+                success: "true",
+                authenticated: true,
+
+                admin:
+                    req.admin,
+
+                authUser:
+                    req.authUser
+            });
+
+        } catch (err) {
+
+            console.error(
+                "❌ AUTH STATE FAILURE:",
+                err
+            );
+
+            return res.status(500).json({
+                success: "false",
+                message:
+                    err.message
+            });
+        }
+    }
+);
 
 /* =========================================================
    FETCH ALL USERS
@@ -191,8 +231,10 @@ router.get(
 
             return res.json({
                 success: "true",
+
                 total:
                     data?.length || 0,
+
                 data:
                     data || []
             });
