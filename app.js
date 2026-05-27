@@ -15,7 +15,7 @@ import startSessionRoute from "./api/start-session.js";
 import endSessionRoute from "./api/end-session.js";
 import systemCheckRoute from "./api/system_check.js";
 import heartbeatRouter from "./api/heartbeat.js";
-
+import adminUserRouter from "./api/admin-user.js";
 // ========================================
 // WEB PLATFORM ROUTES
 // ========================================
@@ -113,6 +113,8 @@ app.use(
     "/api/admin-child",
     adminChildListRoute
 );
+
+app.use("/api/admin-user", adminUserRouter);
 
 // ========================================
 // HEALTH CHECK
