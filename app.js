@@ -20,7 +20,7 @@ import adminUserRouter from "./api/admin-user.js";
 // WEB PLATFORM ROUTES
 // ========================================
 import registerRoute from "./api/register.js";
-import loginRoute from "./api/login.js";
+import loginRouter from "./api/login.js";
 import profileRoute from "./api/profile.js";
 
 // ========================================
@@ -88,10 +88,7 @@ app.use(
     registerRoute
 );
 
-app.use(
-    "/api/login",
-    loginRoute
-);
+app.use("/api/login", loginRouter);
 
 app.use(
     "/api",
