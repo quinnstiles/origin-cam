@@ -11,7 +11,7 @@ async function verifyAdminAccess(req, res, next) {
     try {
 
         // =====================================================
-        // AUTH HEADER
+        // AUTHORIZATION HEADER
         // =====================================================
         const authHeader =
             req.headers.authorization;
@@ -29,7 +29,7 @@ async function verifyAdminAccess(req, res, next) {
         }
 
         // =====================================================
-        // TOKEN
+        // ACCESS TOKEN
         // =====================================================
         const token =
             authHeader.split(" ")[1];
@@ -44,34 +44,37 @@ async function verifyAdminAccess(req, res, next) {
         }
 
         console.log(
-            "🧠 TOKEN:",
-            token?.slice(0, 40)
+            "🧠 VERIFY TOKEN:",
+            token.slice(0, 40)
         );
 
         // =====================================================
-        // VERIFY USER FROM SUPABASE AUTH
+        // VERIFY SUPABASE USER
         // =====================================================
         const {
             data: authData,
             error: authError
         } =
-            await supabaseAdmin.auth.getUser(token);
+            await supabaseAdmin
+                .auth
+                .getUser(token);
 
-        console.log("AUTH DATA:", authData);
-        console.log("AUTH ERROR:", authError);
-        console.log("USER:", user);
+        console.log(
+            "🧠 AUTH DATA:",
+            authData
+        );
+
+        console.log(
+            "🧠 AUTH ERROR:",
+            authError
+        );
 
         const user =
             authData?.user;
 
         console.log(
-            "🧠 VERIFY USER:",
-            user?.email
-        );
-
-        console.log(
-            "🧠 VERIFY ERROR:",
-            authError
+            "🧠 AUTH USER:",
+            user
         );
 
         if (
@@ -87,10 +90,18 @@ async function verifyAdminAccess(req, res, next) {
         }
 
         // =====================================================
+        // NORMALIZE EMAIL
+        // =====================================================
+        const normalizedEmail =
+            user.email
+                ?.trim()
+                ?.toLowerCase();
+
+        // =====================================================
         // VERIFY ADMIN EXISTS
         // =====================================================
         const {
-            data: adminProfiles,
+            data: adminProfile,
             error: adminError
         } =
             await supabaseAdmin
@@ -98,18 +109,17 @@ async function verifyAdminAccess(req, res, next) {
                 .select("*")
                 .eq(
                     "email",
-                    user.email
-                        .trim()
-                        .toLowerCase()
+                    normalizedEmail
                 )
                 .eq(
                     "signature",
                     "origin"
-                );
+                )
+                .maybeSingle();
 
         console.log(
-            "🧠 ADMIN PROFILES:",
-            adminProfiles
+            "🧠 ADMIN PROFILE:",
+            adminProfile
         );
 
         console.log(
@@ -119,8 +129,7 @@ async function verifyAdminAccess(req, res, next) {
 
         if (
             adminError ||
-            !adminProfiles ||
-            adminProfiles.length === 0
+            !adminProfile
         ) {
 
             return res.status(401).json({
@@ -134,10 +143,21 @@ async function verifyAdminAccess(req, res, next) {
         // STORE ADMIN
         // =====================================================
         req.admin =
-            adminProfiles[0];
+            adminProfile;
 
-        console.log("VERIFY ADMIN ACCESS SUCCESS");
-        console.log("================================");
+        req.token =
+            token;
+
+        req.authUser =
+            user;
+
+        console.log(
+            "✅ VERIFY ADMIN ACCESS SUCCESS"
+        );
+
+        console.log(
+            "================================"
+        );
 
         next();
 
@@ -182,6 +202,9 @@ router.get(
 
         try {
 
+            // =================================================
+            // SIGNATURE
+            // =================================================
             const signature =
                 req.query.signature;
 
@@ -195,7 +218,7 @@ router.get(
             // =================================================
             if (!signature) {
 
-                return res.json({
+                return res.status(400).json({
                     success: false,
                     message:
                         "Missing signature parameter."
@@ -210,11 +233,16 @@ router.get(
                     .trim()
                     .toLowerCase();
 
+            console.log(
+                "🧠 NORMALIZED SIGNATURE:",
+                normalizedSignature
+            );
+
             // =================================================
             // FETCH USERS
             // =================================================
             const {
-                data,
+                data: users,
                 error
             } =
                 await supabaseAdmin
@@ -242,20 +270,16 @@ router.get(
 
             console.log(
                 "🧠 USERS FOUND:",
-                data?.length
+                users?.length || 0
             );
 
             console.log(
-                "🧠 USERS DATA:",
-                data
-            );
-
-            console.log(
-                "🧠 FETCH ERROR:",
+                "🧠 USERS ERROR:",
                 error
             );
 
             if (error) {
+
                 throw error;
             }
 
@@ -265,9 +289,9 @@ router.get(
             return res.json({
                 success: true,
                 total:
-                    data?.length || 0,
+                    users?.length || 0,
                 data:
-                    data || []
+                    users || []
             });
 
         } catch (err) {

@@ -10,6 +10,9 @@ async function verifyAdminAccess(req, res, next) {
 
     try {
 
+        // =====================================================
+        // AUTHORIZATION HEADER
+        // =====================================================
         const authHeader =
             req.headers.authorization;
 
@@ -19,23 +22,37 @@ async function verifyAdminAccess(req, res, next) {
         ) {
 
             return res.status(401).json({
-                success: "false",
+                success: false,
                 message:
                     "Missing authorization token."
             });
         }
 
+        // =====================================================
+        // ACCESS TOKEN
+        // =====================================================
         const token =
             authHeader.split(" ")[1];
 
-        req.token =
-            token;
+        if (!token) {
+
+            return res.status(401).json({
+                success: false,
+                message:
+                    "Missing authentication token."
+            });
+        }
+
+        console.log(
+            "🧠 LOGOUT TOKEN:",
+            token.slice(0, 40)
+        );
 
         // =====================================================
-        // VERIFY TOKEN
+        // VERIFY AUTH USER
         // =====================================================
         const {
-            data: { user },
+            data: authData,
             error: authError
         } =
             await supabaseAdmin
@@ -43,13 +60,21 @@ async function verifyAdminAccess(req, res, next) {
                 .getUser(token);
 
         console.log(
-            "🧠 LOGOUT VERIFY USER:",
-            user?.email
+            "🧠 AUTH DATA:",
+            authData
         );
 
         console.log(
-            "🧠 LOGOUT VERIFY ERROR:",
+            "🧠 AUTH ERROR:",
             authError
+        );
+
+        const user =
+            authData?.user;
+
+        console.log(
+            "🧠 AUTH USER:",
+            user
         );
 
         if (
@@ -58,11 +83,19 @@ async function verifyAdminAccess(req, res, next) {
         ) {
 
             return res.status(401).json({
-                success: "false",
+                success: false,
                 message:
                     "Invalid authentication token."
             });
         }
+
+        // =====================================================
+        // NORMALIZE EMAIL
+        // =====================================================
+        const normalizedEmail =
+            user.email
+                ?.trim()
+                ?.toLowerCase();
 
         // =====================================================
         // VERIFY ADMIN
@@ -76,7 +109,7 @@ async function verifyAdminAccess(req, res, next) {
                 .select("*")
                 .eq(
                     "email",
-                    user.email
+                    normalizedEmail
                 )
                 .eq(
                     "signature",
@@ -100,17 +133,31 @@ async function verifyAdminAccess(req, res, next) {
         ) {
 
             return res.status(401).json({
-                success: "false",
+                success: false,
                 message:
                     "invalid admin"
             });
         }
 
+        // =====================================================
+        // STORE CONTEXT
+        // =====================================================
         req.admin =
             adminProfile;
 
         req.authUser =
             user;
+
+        req.token =
+            token;
+
+        console.log(
+            "✅ ADMIN LOGOUT VERIFY SUCCESS"
+        );
+
+        console.log(
+            "================================"
+        );
 
         next();
 
@@ -122,7 +169,7 @@ async function verifyAdminAccess(req, res, next) {
         );
 
         return res.status(500).json({
-            success: "false",
+            success: false,
             message:
                 err.message
         });
@@ -139,26 +186,18 @@ router.post(
 
         try {
 
-            // =================================================
-            // INVALIDATE SESSION
-            // =================================================
-            const {
-                error: signOutError
-            } =
-                await supabaseAdmin
-                    .auth
-                    .admin
-                    .signOut(
-                        req.token
-                    );
-
             console.log(
-                "🧠 SIGN OUT ERROR:",
-                signOutError
+                `👋 ADMIN LOGOUT: ${req.authUser?.email}`
             );
 
+            // =================================================
+            // IMPORTANT:
+            // FRONTEND CLEARS LOCAL STORAGE.
+            // SERVER DOES NOT FORCE REVOKE TOKENS.
+            // =================================================
+
             return res.json({
-                success: "true",
+                success: true,
                 message:
                     "Admin logged out successfully."
             });
@@ -171,7 +210,7 @@ router.post(
             );
 
             return res.status(500).json({
-                success: "false",
+                success: false,
                 message:
                     err.message
             });

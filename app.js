@@ -8,7 +8,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // ========================================
-// ROUTES
+// CORE ROUTES
 // ========================================
 import authRoute from "./api/auth.js";
 import startSessionRoute from "./api/start-session.js";
@@ -27,8 +27,8 @@ import profileRoute from "./api/profile.js";
 // ADMIN ROUTES
 // ========================================
 import adminLoginRoute from "./api/admin-login.js";
-import adminChildListRoute from "./api/admin-child-list.js";
 import adminLogoutRoute from "./api/admin-logout.js";
+import adminChildListRoute from "./api/admin-child-list.js";
 
 // ========================================
 // SESSION ENGINE
@@ -51,26 +51,50 @@ app.use(express.json({
 }));
 
 // ========================================
-// CORE ROUTES
+// CORE API ROUTES
 // ========================================
-app.use("/api/heartbeat", heartbeatRouter);
+app.use(
+    "/api/heartbeat",
+    heartbeatRouter
+);
 
-app.use("/api/auth", authRoute);
+app.use(
+    "/api/auth",
+    authRoute
+);
 
-app.use("/api/start-session", startSessionRoute);
+app.use(
+    "/api/start-session",
+    startSessionRoute
+);
 
-app.use("/api/end-session", endSessionRoute);
+app.use(
+    "/api/end-session",
+    endSessionRoute
+);
 
-app.use("/api/system-check", systemCheckRoute);
+app.use(
+    "/api/system-check",
+    systemCheckRoute
+);
 
 // ========================================
 // WEB PLATFORM ROUTES
 // ========================================
-app.use("/api/register", registerRoute);
+app.use(
+    "/api/register",
+    registerRoute
+);
 
-app.use("/api/login", loginRoute);
+app.use(
+    "/api/login",
+    loginRoute
+);
 
-app.use("/api", profileRoute);
+app.use(
+    "/api",
+    profileRoute
+);
 
 // ========================================
 // ADMIN ROUTES
@@ -80,11 +104,14 @@ app.use(
     adminLoginRoute
 );
 
-
-
 app.use(
     "/api/admin-logout",
     adminLogoutRoute
+);
+
+app.use(
+    "/api/admin-child",
+    adminChildListRoute
 );
 
 // ========================================
@@ -92,7 +119,7 @@ app.use(
 // ========================================
 app.get("/", (req, res) => {
 
-    res.json({
+    return res.json({
         success: true,
         message: "Origin server running"
     });
@@ -103,54 +130,72 @@ app.get("/", (req, res) => {
 // ========================================
 setInterval(async () => {
 
-    const activeSessions =
-        getAllSessions();
+    try {
 
-    const now =
-        Date.now();
+        const activeSessions =
+            getAllSessions();
 
-    const DISCONNECT_THRESHOLD =
-        10000;
+        const now =
+            Date.now();
 
-    for (const session of activeSessions.values()) {
+        const DISCONNECT_THRESHOLD =
+            10000;
 
-        const referenceTime =
-            session.lastHeartbeat ||
-            session.createdAt;
+        for (const session of activeSessions.values()) {
 
-        const timeSinceLastPing =
-            now - referenceTime;
+            const referenceTime =
+                session.lastHeartbeat ||
+                session.createdAt;
 
-        if (isNaN(timeSinceLastPing)) {
+            const timeSinceLastPing =
+                now - referenceTime;
 
-            console.log(
-                `⚠️ Warning: Session ${session.sessionId} has an invalid timestamp. Correcting flag.`
-            );
+            // ====================================
+            // INVALID TIMESTAMP SAFETY
+            // ====================================
+            if (
+                isNaN(timeSinceLastPing)
+            ) {
 
-            session.lastHeartbeat =
-                Date.now();
+                console.log(
+                    `⚠️ Warning: Session ${session.sessionId} has invalid heartbeat timing.`
+                );
 
-            continue;
+                session.lastHeartbeat =
+                    Date.now();
+
+                continue;
+            }
+
+            // ====================================
+            // SESSION CRASH DETECTED
+            // ====================================
+            if (
+                timeSinceLastPing >
+                DISCONNECT_THRESHOLD
+            ) {
+
+                console.log(
+                    `🚨 CRASH DETECTED: Session ${session.sessionId} lost heartbeat for ${Math.floor(timeSinceLastPing / 1000)}s`
+                );
+
+                // ====================================
+                // AUTO FINALIZE SESSION
+                // ====================================
+                await finalizeSession(
+                    session.sessionId,
+                    "heartbeat-lost",
+                    false
+                );
+            }
         }
 
-        if (
-            timeSinceLastPing >
-            DISCONNECT_THRESHOLD
-        ) {
+    } catch (err) {
 
-            console.log(
-                `🚨 CRASH DETECTED: Session ${session.sessionId} went dark for ${Math.floor(timeSinceLastPing / 1000)}s.`
-            );
-
-            // =================================
-            // AUTO FINALIZE SESSION
-            // =================================
-            await finalizeSession(
-                session.sessionId,
-                "heartbeat-lost",
-                false
-            );
-        }
+        console.error(
+            "❌ GLOBAL SESSION ENGINE FAILURE:",
+            err
+        );
     }
 
 }, 5000);
