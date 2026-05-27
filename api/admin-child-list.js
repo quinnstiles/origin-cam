@@ -1,5 +1,8 @@
 import express from "express";
-import { supabaseAdmin } from "../lib/supabase.js";
+import {
+    supabaseAdmin,
+    supabaseAuth
+} from "../lib/supabase.js";
 
 const router = express.Router();
 
@@ -55,9 +58,7 @@ async function verifyAdminAccess(req, res, next) {
             data: authData,
             error: authError
         } =
-            await supabaseAdmin
-                .auth
-                .getUser(token);
+            await supabaseAuth.auth.getUser(token)
 
         console.log(
             "🧠 AUTH DATA:",
