@@ -26,7 +26,7 @@ async function verifyAdminAccess(req, res, next) {
         const {
             data: { user },
             error: authError
-        } = await supabaseAdmin.auth.getUser(token);
+        } = await supabaseAuth.auth.getUser(token)
 
         if (authError || !user) {
             console.log("❌ TOKEN VERIFY FAILED:", authError);
