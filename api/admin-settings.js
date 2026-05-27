@@ -25,6 +25,9 @@ async function verifyAdminAccess(
 
     try {
 
+        // =====================================================
+        // AUTH HEADER
+        // =====================================================
         const authHeader =
             req.headers.authorization;
 
@@ -42,19 +45,48 @@ async function verifyAdminAccess(
             });
         }
 
+        // =====================================================
+        // TOKEN
+        // =====================================================
         const token =
             authHeader.split(" ")[1];
 
+        if (!token) {
+
+            return res.status(401).json({
+                success: false,
+                message:
+                    "Missing authentication token."
+            });
+        }
+
+        console.log(
+            "🧠 VERIFY ADMIN TOKEN"
+        );
+
         // =====================================================
-        // VERIFY USER TOKEN
+        // VERIFY USER
         // =====================================================
         const {
-            data: { user },
+            data: authData,
             error: authError
         } =
             await supabaseAuth.auth.getUser(
                 token
             );
+
+        console.log(
+            "🧠 AUTH DATA:",
+            authData
+        );
+
+        console.log(
+            "🧠 AUTH ERROR:",
+            authError
+        );
+
+        const user =
+            authData?.user;
 
         if (
             authError ||
@@ -69,7 +101,7 @@ async function verifyAdminAccess(
         }
 
         // =====================================================
-        // VERIFY ADMIN TABLE
+        // FIND ADMIN
         // =====================================================
         const {
             data: admin,
@@ -77,7 +109,17 @@ async function verifyAdminAccess(
         } =
             await supabaseAdmin
                 .from("admin")
-                .select("*")
+                .select(`
+                    id,
+                    uuid,
+                    email,
+                    signature,
+                    selling_price,
+                    payment_instruction,
+                    window_download_link,
+                    macOS_download_link,
+                    created_at
+                `)
                 .eq(
                     "uuid",
                     user.id
@@ -87,6 +129,16 @@ async function verifyAdminAccess(
                     "origin"
                 )
                 .maybeSingle();
+
+        console.log(
+            "🧠 ADMIN:",
+            admin
+        );
+
+        console.log(
+            "🧠 ADMIN ERROR:",
+            adminError
+        );
 
         if (
             adminError ||
@@ -100,11 +152,57 @@ async function verifyAdminAccess(
             });
         }
 
+        // =====================================================
+        // FIND USER BALANCE
+        // =====================================================
+        const {
+            data: userProfile,
+            error: userError
+        } =
+            await supabaseAdmin
+                .from("users")
+                .select(`
+                    id,
+                    remaining_seconds,
+                    email,
+                    name
+                `)
+                .eq(
+                    "id",
+                    user.id
+                )
+                .maybeSingle();
+
+        console.log(
+            "🧠 USER PROFILE:",
+            userProfile
+        );
+
+        console.log(
+            "🧠 USER ERROR:",
+            userError
+        );
+
+        if (userError) {
+
+            return res.status(500).json({
+                success: false,
+                message:
+                    userError.message
+            });
+        }
+
+        // =====================================================
+        // STORE
+        // =====================================================
         req.authUser =
             user;
 
         req.admin =
             admin;
+
+        req.userProfile =
+            userProfile;
 
         next();
 
@@ -124,6 +222,22 @@ async function verifyAdminAccess(
 }
 
 // =========================================================
+// AUTH STATE
+// =========================================================
+router.get(
+    "/auth-state",
+    verifyAdminAccess,
+    async (req, res) => {
+
+        return res.json({
+            success: true,
+            admin:
+                req.admin
+        });
+    }
+);
+
+// =========================================================
 // GET ADMIN SETTINGS
 // =========================================================
 router.get(
@@ -133,52 +247,46 @@ router.get(
 
         try {
 
+            console.log(
+                "🚀 FETCH ADMIN SETTINGS"
+            );
+
             const admin =
                 req.admin;
 
+            const userProfile =
+                req.userProfile;
+
             // =================================================
-            // FETCH USER BALANCE
+            // RESPONSE
             // =================================================
-            const {
-                data: userProfile,
-                error: userError
-            } =
-                await supabaseAdmin
-                    .from("users")
-                    .select(`
-                        remaining_seconds
-                    `)
-                    .eq(
-                        "id",
-                        admin.uuid
-                    )
-                    .maybeSingle();
-
-            if (userError) {
-
-                throw userError;
-            }
-
             return res.json({
+
                 success: true,
 
                 data: {
 
+                    // =========================================
+                    // ADMIN TABLE
+                    // =========================================
                     email:
-                        admin.email || "",
+                        admin?.email || "",
 
                     selling_price:
-                        admin.selling_price || "",
+                        admin?.selling_price || "",
 
                     payment_instruction:
-                        admin.payment_instruction || "",
+                        admin?.payment_instruction || "",
 
                     window_download_link:
-                        admin.window_download_link || "",
+                        admin?.window_download_link || "",
 
                     macOS_download_link:
-                        admin.macOS_download_link || "",
+                        admin?.macOS_download_link || "",
 
+                    // =========================================
+                    // USERS TABLE
+                    // =========================================
                     remaining_seconds:
                         Number(
                             userProfile?.remaining_seconds
@@ -212,6 +320,10 @@ router.put(
 
         try {
 
+            console.log(
+                "🚀 UPDATE ADMIN SETTINGS"
+            );
+
             const {
                 selling_price,
                 payment_instruction,
@@ -219,46 +331,64 @@ router.put(
                 macOS_download_link
             } = req.body;
 
-            const updatePayload = {
-
-                updated_at:
-                    new Date().toISOString()
-            };
+            // =================================================
+            // UPDATE PAYLOAD
+            // =================================================
+            const updatePayload = {};
 
             // =================================================
-            // OPTIONAL FIELDS
+            // SELLING PRICE
             // =================================================
             if (
                 selling_price !== undefined
             ) {
 
                 updatePayload.selling_price =
-                    selling_price;
+                    Number(
+                        selling_price
+                    ) || 0;
             }
 
+            // =================================================
+            // PAYMENT INSTRUCTION
+            // =================================================
             if (
                 payment_instruction !== undefined
             ) {
 
                 updatePayload.payment_instruction =
-                    payment_instruction;
+                    payment_instruction
+                        ?.trim?.() || "";
             }
 
+            // =================================================
+            // WINDOWS DOWNLOAD
+            // =================================================
             if (
                 window_download_link !== undefined
             ) {
 
                 updatePayload.window_download_link =
-                    window_download_link;
+                    window_download_link
+                        ?.trim?.() || "";
             }
 
+            // =================================================
+            // MAC DOWNLOAD
+            // =================================================
             if (
                 macOS_download_link !== undefined
             ) {
 
                 updatePayload.macOS_download_link =
-                    macOS_download_link;
+                    macOS_download_link
+                        ?.trim?.() || "";
             }
+
+            console.log(
+                "🧠 UPDATE PAYLOAD:",
+                updatePayload
+            );
 
             // =================================================
             // UPDATE ADMIN TABLE
@@ -280,14 +410,34 @@ router.put(
                         "signature",
                         "origin"
                     )
-                    .select()
+                    .select(`
+                        id,
+                        email,
+                        selling_price,
+                        payment_instruction,
+                        window_download_link,
+                        macOS_download_link
+                    `)
                     .maybeSingle();
+
+            console.log(
+                "🧠 UPDATED ADMIN:",
+                data
+            );
+
+            console.log(
+                "🧠 UPDATE ERROR:",
+                error
+            );
 
             if (error) {
 
                 throw error;
             }
 
+            // =================================================
+            // SUCCESS
+            // =================================================
             return res.json({
                 success: true,
                 message:
