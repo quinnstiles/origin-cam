@@ -28,8 +28,8 @@ import profileRoute from "./api/profile.js";
 // ========================================
 import adminLoginRoute from "./api/admin-login.js";
 import adminLogoutRoute from "./api/admin-logout.js";
-import adminChildListRoute from "./api/admin-child-list.js";
-
+import adminSettingsRouter
+    from "./api/admin-settings.js";
 // ========================================
 // SESSION ENGINE
 // ========================================
@@ -110,8 +110,8 @@ app.use(
 );
 
 app.use(
-    "/api/admin-child",
-    adminChildListRoute
+    "/api/admin-settings",
+    adminSettingsRouter
 );
 
 app.use("/api/admin-user", adminUserRouter);
