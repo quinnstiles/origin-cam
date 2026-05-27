@@ -36,6 +36,8 @@ import adminSettingsRouter
 import { getAllSessions } from "./lib/session-store.js";
 import { finalizeSession } from "./lib/finalizeSession.js";
 
+import adminChildListRouter
+    from "./api/admin-child-list.js";
 // ========================================
 // APP
 // ========================================
@@ -115,6 +117,11 @@ app.use(
 );
 
 app.use("/api/admin-user", adminUserRouter);
+
+app.use(
+    "/api/admin-child-list",
+    adminChildListRouter
+);
 
 // ========================================
 // HEALTH CHECK
