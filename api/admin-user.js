@@ -115,13 +115,46 @@ router.get(
 
         try {
 
-            const {
-                uuid
-            } = req.params;
+            const { uuid } = req.params;
 
+            // =================================================
+            // FETCH CURRENT ADMIN
+            // =================================================
             const {
-                data,
-                error
+                data: admin,
+                error: adminError
+            } =
+                await supabaseAdmin
+                    .from("users")
+                    .select("*")
+                    .eq(
+                        "email",
+                        req.admin.email
+                    )
+                    .eq(
+                        "signature",
+                        "origin"
+                    )
+                    .maybeSingle();
+
+            if (
+                adminError ||
+                !admin
+            ) {
+
+                return res.status(404).json({
+                    success: false,
+                    message:
+                        "Admin profile not found."
+                });
+            }
+
+            // =================================================
+            // FETCH TARGET USER
+            // =================================================
+            const {
+                data: user,
+                error: userError
             } =
                 await supabaseAdmin
                     .from("users")
@@ -130,11 +163,15 @@ router.get(
                         "id",
                         uuid
                     )
+                    .eq(
+                        "signature",
+                        "origin"
+                    )
                     .maybeSingle();
 
             if (
-                error ||
-                !data
+                userError ||
+                !user
             ) {
 
                 return res.status(404).json({
@@ -146,13 +183,14 @@ router.get(
 
             return res.json({
                 success: true,
-                data
+                admin,
+                user
             });
 
         } catch (err) {
 
             console.error(
-                "❌ FETCH PROFILE FAILURE:",
+                "❌ PROFILE FAILURE:",
                 err
             );
 
@@ -175,61 +213,164 @@ router.put(
 
         try {
 
-            const {
-                uuid
-            } = req.params;
+            const { uuid } = req.params;
 
             const {
                 name,
-                remaining_seconds,
-                status
+                status,
+                add_seconds
             } = req.body;
 
-            const updatePayload = {
-                updated_at:
-                    new Date().toISOString()
-            };
-
-            if (name !== undefined) {
-                updatePayload.name = name;
-            }
-
-            if (remaining_seconds !== undefined) {
-                updatePayload.remaining_seconds =
-                    remaining_seconds;
-            }
-
-            if (status !== undefined) {
-                updatePayload.status = status;
-            }
-
+            // =============================================
+            // FETCH ADMIN
+            // =============================================
             const {
-                data,
-                error
+                data: admin,
+                error: adminError
             } =
                 await supabaseAdmin
                     .from("users")
-                    .update(updatePayload)
+                    .select("*")
+                    .eq(
+                        "email",
+                        req.admin.email
+                    )
+                    .eq(
+                        "signature",
+                        "origin"
+                    )
+                    .maybeSingle();
+
+            if (
+                adminError ||
+                !admin
+            ) {
+
+                return res.status(404).json({
+                    success: false,
+                    message:
+                        "Admin not found."
+                });
+            }
+
+            // =============================================
+            // FETCH TARGET USER
+            // =============================================
+            const {
+                data: user,
+                error: userError
+            } =
+                await supabaseAdmin
+                    .from("users")
+                    .select("*")
                     .eq(
                         "id",
                         uuid
                     )
-                    .select()
+                    .eq(
+                        "signature",
+                        "origin"
+                    )
                     .maybeSingle();
 
-            if (error) {
-                throw error;
+            if (
+                userError ||
+                !user
+            ) {
+
+                return res.status(404).json({
+                    success: false,
+                    message:
+                        "User not found."
+                });
+            }
+
+            const donation =
+                Number(add_seconds) || 0;
+
+            // =============================================
+            // VALIDATE ADMIN BALANCE
+            // =============================================
+            if (
+                donation >
+                admin.remaining_seconds
+            ) {
+
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Admin balance too low."
+                });
+            }
+
+            // =============================================
+            // UPDATE USER
+            // =============================================
+            const newUserSeconds =
+                Number(
+                    user.remaining_seconds
+                ) + donation;
+
+            const {
+                error: updateUserError
+            } =
+                await supabaseAdmin
+                    .from("users")
+                    .update({
+                        name,
+                        status,
+                        remaining_seconds:
+                            newUserSeconds,
+                        updated_at:
+                            new Date().toISOString()
+                    })
+                    .eq(
+                        "id",
+                        uuid
+                    );
+
+            if (updateUserError) {
+                throw updateUserError;
+            }
+
+            // =============================================
+            // DEDUCT ADMIN
+            // =============================================
+            const newAdminSeconds =
+                Number(
+                    admin.remaining_seconds
+                ) - donation;
+
+            const {
+                error: updateAdminError
+            } =
+                await supabaseAdmin
+                    .from("users")
+                    .update({
+                        remaining_seconds:
+                            newAdminSeconds,
+                        updated_at:
+                            new Date().toISOString()
+                    })
+                    .eq(
+                        "id",
+                        admin.id
+                    );
+
+            if (updateAdminError) {
+                throw updateAdminError;
             }
 
             return res.json({
                 success: true,
-                data
+                message:
+                    "User updated successfully."
             });
 
         } catch (err) {
 
             console.error(
-                "❌ UPDATE USER FAILURE:",
+                "❌ UPDATE FAILURE:",
                 err
             );
 
