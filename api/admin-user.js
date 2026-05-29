@@ -1,3 +1,9 @@
+// =========================================================
+// ORIGIN CAM ADMIN USER API
+// FILE:
+// /api/admin-user.js
+// =========================================================
+
 import express from "express";
 
 import {
@@ -5,21 +11,31 @@ import {
     supabaseAuth
 } from "../lib/supabase.js";
 
-const router = express.Router();
+const router =
+    express.Router();
 
-/* =========================================================
-   VERIFY ADMIN ACCESS
-========================================================= */
-async function verifyAdminAccess(req, res, next) {
+// =========================================================
+// VERIFY ADMIN ACCESS
+// =========================================================
+async function verifyAdminAccess(
+    req,
+    res,
+    next
+) {
 
     try {
 
+        // =====================================================
+        // AUTHORIZATION HEADER
+        // =====================================================
         const authHeader =
             req.headers.authorization;
 
         if (
             !authHeader ||
-            !authHeader.startsWith("Bearer ")
+            !authHeader.startsWith(
+                "Bearer "
+            )
         ) {
 
             return res.status(401).json({
@@ -29,17 +45,48 @@ async function verifyAdminAccess(req, res, next) {
             });
         }
 
+        // =====================================================
+        // ACCESS TOKEN
+        // =====================================================
         const token =
             authHeader.split(" ")[1];
 
+        if (!token) {
+
+            return res.status(401).json({
+                success: false,
+                message:
+                    "Missing authentication token."
+            });
+        }
+
+        console.log(
+            "🧠 VERIFY ADMIN TOKEN"
+        );
+
         // =====================================================
-        // VERIFY TOKEN
+        // VERIFY AUTH USER
         // =====================================================
         const {
-            data: { user },
+            data: authData,
             error: authError
         } =
-            await supabaseAuth.auth.getUser(token);
+            await supabaseAuth
+                .auth
+                .getUser(token);
+
+        console.log(
+            "🧠 AUTH DATA:",
+            authData
+        );
+
+        console.log(
+            "🧠 AUTH ERROR:",
+            authError
+        );
+
+        const user =
+            authData?.user;
 
         if (
             authError ||
@@ -50,6 +97,33 @@ async function verifyAdminAccess(req, res, next) {
                 success: false,
                 message:
                     "Invalid authentication token."
+            });
+        }
+
+        // =====================================================
+        // SIGNATURE
+        // =====================================================
+        const signature =
+            (
+                req.headers["x-signature"] ||
+                req.query.signature ||
+                req.body?.signature
+            )
+                ?.toString()
+                ?.trim()
+                ?.toLowerCase();
+
+        console.log(
+            "🧠 SIGNATURE:",
+            signature
+        );
+
+        if (!signature) {
+
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Missing signature."
             });
         }
 
@@ -69,9 +143,19 @@ async function verifyAdminAccess(req, res, next) {
                 )
                 .eq(
                     "signature",
-                    "origin"
+                    signature
                 )
                 .maybeSingle();
+
+        console.log(
+            "🧠 ADMIN PROFILE:",
+            adminProfile
+        );
+
+        console.log(
+            "🧠 ADMIN ERROR:",
+            adminError
+        );
 
         if (
             adminError ||
@@ -85,8 +169,17 @@ async function verifyAdminAccess(req, res, next) {
             });
         }
 
+        // =====================================================
+        // STORE CONTEXT
+        // =====================================================
         req.admin =
             adminProfile;
+
+        req.authUser =
+            user;
+
+        req.signature =
+            signature;
 
         next();
 
@@ -105,9 +198,9 @@ async function verifyAdminAccess(req, res, next) {
     }
 }
 
-/* =========================================================
-   FETCH SINGLE USER PROFILE
-========================================================= */
+// =========================================================
+// FETCH SINGLE USER PROFILE
+// =========================================================
 router.get(
     "/profile/:uuid",
     verifyAdminAccess,
@@ -115,10 +208,19 @@ router.get(
 
         try {
 
-            const { uuid } = req.params;
+            const { uuid } =
+                req.params;
+
+            const signature =
+                req.signature;
+
+            console.log(
+                "🚀 FETCH USER PROFILE:",
+                uuid
+            );
 
             // =================================================
-            // FETCH CURRENT ADMIN
+            // FETCH ADMIN USER PROFILE
             // =================================================
             const {
                 data: admin,
@@ -133,9 +235,19 @@ router.get(
                     )
                     .eq(
                         "signature",
-                        "origin"
+                        signature
                     )
                     .maybeSingle();
+
+            console.log(
+                "🧠 ADMIN USER:",
+                admin
+            );
+
+            console.log(
+                "🧠 ADMIN USER ERROR:",
+                adminError
+            );
 
             if (
                 adminError ||
@@ -165,9 +277,19 @@ router.get(
                     )
                     .eq(
                         "signature",
-                        "origin"
+                        signature
                     )
                     .maybeSingle();
+
+            console.log(
+                "🧠 TARGET USER:",
+                user
+            );
+
+            console.log(
+                "🧠 TARGET USER ERROR:",
+                userError
+            );
 
             if (
                 userError ||
@@ -181,6 +303,9 @@ router.get(
                 });
             }
 
+            // =================================================
+            // SUCCESS
+            // =================================================
             return res.json({
                 success: true,
                 admin,
@@ -203,9 +328,9 @@ router.get(
     }
 );
 
-/* =========================================================
-   UPDATE USER
-========================================================= */
+// =========================================================
+// UPDATE USER
+// =========================================================
 router.put(
     "/update/:uuid",
     verifyAdminAccess,
@@ -213,7 +338,11 @@ router.put(
 
         try {
 
-            const { uuid } = req.params;
+            const { uuid } =
+                req.params;
+
+            const signature =
+                req.signature;
 
             const {
                 name,
@@ -221,9 +350,14 @@ router.put(
                 add_seconds
             } = req.body;
 
-            // =============================================
-            // FETCH ADMIN
-            // =============================================
+            console.log(
+                "🚀 UPDATE USER:",
+                uuid
+            );
+
+            // =================================================
+            // FETCH ADMIN USER PROFILE
+            // =================================================
             const {
                 data: admin,
                 error: adminError
@@ -237,9 +371,19 @@ router.put(
                     )
                     .eq(
                         "signature",
-                        "origin"
+                        signature
                     )
                     .maybeSingle();
+
+            console.log(
+                "🧠 ADMIN:",
+                admin
+            );
+
+            console.log(
+                "🧠 ADMIN ERROR:",
+                adminError
+            );
 
             if (
                 adminError ||
@@ -253,9 +397,9 @@ router.put(
                 });
             }
 
-            // =============================================
+            // =================================================
             // FETCH TARGET USER
-            // =============================================
+            // =================================================
             const {
                 data: user,
                 error: userError
@@ -269,9 +413,19 @@ router.put(
                     )
                     .eq(
                         "signature",
-                        "origin"
+                        signature
                     )
                     .maybeSingle();
+
+            console.log(
+                "🧠 USER:",
+                user
+            );
+
+            console.log(
+                "🧠 USER ERROR:",
+                userError
+            );
 
             if (
                 userError ||
@@ -285,15 +439,31 @@ router.put(
                 });
             }
 
+            // =================================================
+            // DONATION
+            // =================================================
             const donation =
-                Number(add_seconds) || 0;
+                Number(
+                    add_seconds
+                ) || 0;
 
-            // =============================================
-            // VALIDATE ADMIN BALANCE
-            // =============================================
+            if (donation < 0) {
+
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Invalid donation amount."
+                });
+            }
+
+            // =================================================
+            // ADMIN BALANCE CHECK
+            // =================================================
             if (
                 donation >
-                admin.remaining_seconds
+                Number(
+                    admin.remaining_seconds
+                )
             ) {
 
                 return res.status(400).json({
@@ -303,9 +473,9 @@ router.put(
                 });
             }
 
-            // =============================================
+            // =================================================
             // UPDATE USER
-            // =============================================
+            // =================================================
             const newUserSeconds =
                 Number(
                     user.remaining_seconds
@@ -317,8 +487,10 @@ router.put(
                 await supabaseAdmin
                     .from("users")
                     .update({
-                        name,
-                        status,
+                        name:
+                            name?.trim?.() || "",
+                        status:
+                            Boolean(status),
                         remaining_seconds:
                             newUserSeconds,
                         updated_at:
@@ -327,15 +499,25 @@ router.put(
                     .eq(
                         "id",
                         uuid
+                    )
+                    .eq(
+                        "signature",
+                        signature
                     );
 
+            console.log(
+                "🧠 UPDATE USER ERROR:",
+                updateUserError
+            );
+
             if (updateUserError) {
+
                 throw updateUserError;
             }
 
-            // =============================================
-            // DEDUCT ADMIN
-            // =============================================
+            // =================================================
+            // DEDUCT ADMIN TIME
+            // =================================================
             const newAdminSeconds =
                 Number(
                     admin.remaining_seconds
@@ -355,12 +537,25 @@ router.put(
                     .eq(
                         "id",
                         admin.id
+                    )
+                    .eq(
+                        "signature",
+                        signature
                     );
 
+            console.log(
+                "🧠 UPDATE ADMIN ERROR:",
+                updateAdminError
+            );
+
             if (updateAdminError) {
+
                 throw updateAdminError;
             }
 
+            // =================================================
+            // SUCCESS
+            // =================================================
             return res.json({
                 success: true,
                 message:
@@ -383,9 +578,9 @@ router.put(
     }
 );
 
-/* =========================================================
-   DELETE USER
-========================================================= */
+// =========================================================
+// DELETE USER
+// =========================================================
 router.delete(
     "/delete/:uuid",
     verifyAdminAccess,
@@ -393,25 +588,115 @@ router.delete(
 
         try {
 
-            const {
+            const { uuid } =
+                req.params;
+
+            const signature =
+                req.signature;
+
+            console.log(
+                "🚀 DELETE USER:",
                 uuid
-            } = req.params;
+            );
 
-            // delete profile
-            await supabaseAdmin
-                .from("users")
-                .delete()
-                .eq(
-                    "id",
-                    uuid
-                );
+            // =================================================
+            // VERIFY USER EXISTS
+            // =================================================
+            const {
+                data: existingUser,
+                error: existingUserError
+            } =
+                await supabaseAdmin
+                    .from("users")
+                    .select(`
+                        id,
+                        email,
+                        signature
+                    `)
+                    .eq(
+                        "id",
+                        uuid
+                    )
+                    .eq(
+                        "signature",
+                        signature
+                    )
+                    .maybeSingle();
 
-            // delete auth account
-            await supabaseAdmin
-                .auth
-                .admin
-                .deleteUser(uuid);
+            console.log(
+                "🧠 EXISTING USER:",
+                existingUser
+            );
 
+            console.log(
+                "🧠 EXISTING USER ERROR:",
+                existingUserError
+            );
+
+            if (
+                existingUserError ||
+                !existingUser
+            ) {
+
+                return res.status(404).json({
+                    success: false,
+                    message:
+                        "User not found."
+                });
+            }
+
+            // =================================================
+            // DELETE USER PROFILE
+            // =================================================
+            const {
+                error: deleteProfileError
+            } =
+                await supabaseAdmin
+                    .from("users")
+                    .delete()
+                    .eq(
+                        "id",
+                        uuid
+                    )
+                    .eq(
+                        "signature",
+                        signature
+                    );
+
+            console.log(
+                "🧠 DELETE PROFILE ERROR:",
+                deleteProfileError
+            );
+
+            if (deleteProfileError) {
+
+                throw deleteProfileError;
+            }
+
+            // =================================================
+            // DELETE AUTH USER
+            // =================================================
+            const {
+                error: deleteAuthError
+            } =
+                await supabaseAdmin
+                    .auth
+                    .admin
+                    .deleteUser(uuid);
+
+            console.log(
+                "🧠 DELETE AUTH ERROR:",
+                deleteAuthError
+            );
+
+            if (deleteAuthError) {
+
+                throw deleteAuthError;
+            }
+
+            // =================================================
+            // SUCCESS
+            // =================================================
             return res.json({
                 success: true,
                 message:

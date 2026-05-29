@@ -1,15 +1,21 @@
 import express from "express";
+
 import {
     supabaseAdmin,
     supabaseAuth
 } from "../lib/supabase.js";
 
-const router = express.Router();
+const router =
+    express.Router();
 
 /* =========================================================
    VERIFY ADMIN ACCESS
 ========================================================= */
-async function verifyAdminAccess(req, res, next) {
+async function verifyAdminAccess(
+    req,
+    res,
+    next
+) {
 
     try {
 
@@ -21,7 +27,9 @@ async function verifyAdminAccess(req, res, next) {
 
         if (
             !authHeader ||
-            !authHeader.startsWith("Bearer ")
+            !authHeader.startsWith(
+                "Bearer "
+            )
         ) {
 
             return res.status(401).json({
@@ -46,36 +54,50 @@ async function verifyAdminAccess(req, res, next) {
             });
         }
 
+        // =====================================================
+        // SIGNATURE
+        // =====================================================
+        const rawSignature =
+            req.query.signature ||
+            req.body.signature ||
+            req.headers["x-signature"];
+
+        if (!rawSignature) {
+
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Missing signature."
+            });
+        }
+
+        const signature =
+            rawSignature
+                .trim()
+                .toLowerCase();
+
         console.log(
-            "🧠 VERIFY TOKEN:",
-            token.slice(0, 40)
+            "🧠 VERIFY SIGNATURE:",
+            signature
         );
 
         // =====================================================
-        // VERIFY SUPABASE USER
+        // VERIFY USER TOKEN
         // =====================================================
         const {
             data: authData,
             error: authError
         } =
-            await supabaseAuth.auth.getUser(token)
-
-        console.log(
-            "🧠 AUTH DATA:",
-            authData
-        );
-
-        console.log(
-            "🧠 AUTH ERROR:",
-            authError
-        );
+            await supabaseAuth.auth.getUser(
+                token
+            );
 
         const user =
             authData?.user;
 
         console.log(
             "🧠 AUTH USER:",
-            user
+            user?.email
         );
 
         if (
@@ -99,7 +121,7 @@ async function verifyAdminAccess(req, res, next) {
                 ?.toLowerCase();
 
         // =====================================================
-        // VERIFY ADMIN EXISTS
+        // VERIFY ADMIN TABLE
         // =====================================================
         const {
             data: adminProfile,
@@ -114,7 +136,7 @@ async function verifyAdminAccess(req, res, next) {
                 )
                 .eq(
                     "signature",
-                    "origin"
+                    signature
                 )
                 .maybeSingle();
 
@@ -141,23 +163,22 @@ async function verifyAdminAccess(req, res, next) {
         }
 
         // =====================================================
-        // STORE ADMIN
+        // STORE
         // =====================================================
         req.admin =
             adminProfile;
 
-        req.token =
-            token;
-
         req.authUser =
             user;
 
-        console.log(
-            "✅ VERIFY ADMIN ACCESS SUCCESS"
-        );
+        req.signature =
+            signature;
+
+        req.token =
+            token;
 
         console.log(
-            "================================"
+            "✅ ADMIN VERIFIED"
         );
 
         next();
@@ -194,7 +215,7 @@ router.get(
 );
 
 /* =========================================================
-   FETCH ALL USERS
+   FETCH USERS
 ========================================================= */
 router.get(
     "/list",
@@ -203,40 +224,12 @@ router.get(
 
         try {
 
-            // =================================================
-            // SIGNATURE
-            // =================================================
             const signature =
-                req.query.signature;
+                req.signature;
 
             console.log(
                 "📥 FETCH USERS SIGNATURE:",
                 signature
-            );
-
-            // =================================================
-            // VALIDATION
-            // =================================================
-            if (!signature) {
-
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Missing signature parameter."
-                });
-            }
-
-            // =================================================
-            // NORMALIZE SIGNATURE
-            // =================================================
-            const normalizedSignature =
-                signature
-                    .trim()
-                    .toLowerCase();
-
-            console.log(
-                "🧠 NORMALIZED SIGNATURE:",
-                normalizedSignature
             );
 
             // =================================================
@@ -260,7 +253,7 @@ router.get(
                     `)
                     .eq(
                         "signature",
-                        normalizedSignature
+                        signature
                     )
                     .order(
                         "created_at",
@@ -269,24 +262,11 @@ router.get(
                         }
                     );
 
-            console.log(
-                "🧠 USERS FOUND:",
-                users?.length || 0
-            );
-
-            console.log(
-                "🧠 USERS ERROR:",
-                error
-            );
-
             if (error) {
 
                 throw error;
             }
 
-            // =================================================
-            // SUCCESS
-            // =================================================
             return res.json({
                 success: true,
                 total:

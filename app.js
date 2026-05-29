@@ -27,7 +27,6 @@ import profileRoute from "./api/profile.js";
 // ADMIN ROUTES
 // ========================================
 import adminLoginRoute from "./api/admin-login.js";
-import adminLogoutRoute from "./api/admin-logout.js";
 import adminSettingsRouter
     from "./api/admin-settings.js";
 // ========================================
@@ -103,10 +102,7 @@ app.use(
     adminLoginRoute
 );
 
-app.use(
-    "/api/admin-logout",
-    adminLogoutRoute
-);
+
 
 app.use(
     "/api/admin-settings",

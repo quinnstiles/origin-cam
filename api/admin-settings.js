@@ -60,8 +60,37 @@ async function verifyAdminAccess(
             });
         }
 
+        // =====================================================
+        // SIGNATURE
+        // =====================================================
+        const signature =
+            req.query.signature ||
+            req.body.signature;
+
+        if (!signature) {
+
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Missing signature."
+            });
+        }
+
+        // =====================================================
+        // NORMALIZE SIGNATURE
+        // =====================================================
+        const normalizedSignature =
+            signature
+                .trim()
+                .toLowerCase();
+
         console.log(
             "🧠 VERIFY ADMIN TOKEN"
+        );
+
+        console.log(
+            "🧠 SIGNATURE:",
+            normalizedSignature
         );
 
         // =====================================================
@@ -126,7 +155,7 @@ async function verifyAdminAccess(
                 )
                 .eq(
                     "signature",
-                    "origin"
+                    normalizedSignature
                 )
                 .maybeSingle();
 
@@ -165,11 +194,16 @@ async function verifyAdminAccess(
                     id,
                     remaining_seconds,
                     email,
-                    name
+                    name,
+                    signature
                 `)
                 .eq(
                     "id",
                     user.id
+                )
+                .eq(
+                    "signature",
+                    admin.signature
                 )
                 .maybeSingle();
 
@@ -193,8 +227,11 @@ async function verifyAdminAccess(
         }
 
         // =====================================================
-        // STORE
+        // STORE VERIFIED CONTEXT
         // =====================================================
+        req.token =
+            token;
+
         req.authUser =
             user;
 
@@ -203,6 +240,14 @@ async function verifyAdminAccess(
 
         req.userProfile =
             userProfile;
+
+        console.log(
+            "✅ VERIFY ADMIN ACCESS SUCCESS"
+        );
+
+        console.log(
+            "================================"
+        );
 
         next();
 
@@ -408,11 +453,13 @@ router.put(
                     )
                     .eq(
                         "signature",
-                        "origin"
+                        req.admin.signature
                     )
                     .select(`
                         id,
+                        uuid,
                         email,
+                        signature,
                         selling_price,
                         payment_instruction,
                         window_download_link,
