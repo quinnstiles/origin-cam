@@ -1,6 +1,6 @@
 import express from "express";
 import { supabase } from "../lib/supabase.js";
-import { createSession, getUserSession, clearUserSession } from "../lib/session-store.js";
+import { createSession, getUserSession, clearUserSession, deleteSession } from "../lib/session-store.js";
 import { finalizeSession } from "../lib/finalizeSession.js";
 
 const router = express.Router();
@@ -54,7 +54,6 @@ router.post("/", async (req, res) => {
             return res.json({ success: "false", message: "Could not fetch user billing data." });
         }
 
-        // Verify account restriction status gates cleanly
         if (dbUser.status !== true && dbUser.status !== "true") {
             console.log(`🚫 Denied restricted account execution for user ${userId}`);
             return res.json({ success: "false", message: "Account restriction active. Access denied." });
@@ -63,7 +62,6 @@ router.post("/", async (req, res) => {
         const dbSeconds = Number(dbUser.remaining_seconds || 0);
         const graceSeconds = Number(process.env.SESSION_GRACE_SECONDS || 5);
 
-        // Minimum 10-Second Balance Gate Check
         if (dbSeconds <= 10) {
             console.log(`❌ Denied user ${userId}: Insufficient balance (${dbSeconds}s available).`);
             return res.json({
@@ -82,7 +80,6 @@ router.post("/", async (req, res) => {
             return res.json({ success: "false", message: "Infrastructure token configuration error." });
         }
 
-        // 🌟 FIX: Cap the value sent to Decart at 3600, while preserving your actual dbSeconds for local timeout tracking!
         const decartSafeDuration = Math.min(3600, targetedDurationCeiling);
 
         console.log(`🧠 Requesting Decart token with dynamic duration: ${decartSafeDuration}s (Original Ceiling: ${targetedDurationCeiling}s)`);
@@ -96,11 +93,11 @@ router.post("/", async (req, res) => {
                     "x-api-key": process.env.DECART_API_KEY
                 },
                 body: JSON.stringify({
-                    expiresIn: Math.max(300, decartSafeDuration), // 🎯 Capped to max 3600
+                    expiresIn: Math.max(300, decartSafeDuration),
                     allowedModels: ["lucy-2"],
                     constraints: {
                         realtime: {
-                            maxSessionDuration: decartSafeDuration // 🎯 Capped to max 3600
+                            maxSessionDuration: decartSafeDuration
                         }
                     }
                 })
@@ -125,26 +122,42 @@ router.post("/", async (req, res) => {
         const newSession = {
             sessionId: sessionId,
             userId: userId,
-            createdAt: Date.now(),
+            decartToken: decartJson.apiKey, // Save the token here so we can revoke it if needed
+            isLive: false,                  // Set to false initially. Starts at $0 billable.
+            createdAt: null,                // Handled dynamically when streaming actually starts
             lastHeartbeat: Date.now(),
             dbSeconds: dbSeconds,
             graceSeconds: graceSeconds,
             timeoutHandle: null
         };
 
-        const totalAllowedMs = (newSession.dbSeconds + newSession.graceSeconds) * 1000;
-
+        // 🛑 INITIAL HANDSHAKE SAFETY TIMEOUT:
+        // If Decart does not hit our webhook/heartbeat within 15 seconds, cancel everything safely.
         newSession.timeoutHandle = setTimeout(async () => {
-            console.log(`🚨 CRASH DETECTED: Session ${newSession.sessionId} went dark for ${newSession.dbSeconds}s.`);
-            await finalizeSession(newSession.sessionId, "timeout", false);
-        }, totalAllowedMs);
+            const currentSession = getUserSession(userId);
+            if (currentSession && !currentSession.isLive) {
+                console.log(`🚨 HANDSHAKE TIMEOUT: Session ${sessionId} failed to connect within 15s. Invalidating token.`);
+
+                // Opt out of Decart infrastructure immediately via their token endpoint
+                try {
+                    await fetch(`https://api.decart.ai/v1/client/tokens/${currentSession.decartToken}`, {
+                        method: "DELETE",
+                        headers: { "x-api-key": process.env.DECART_API_KEY }
+                    });
+                } catch (err) {
+                    console.log("⚠️ Error notifying Decart of token termination:", err.message);
+                }
+
+                deleteSession(sessionId);
+            }
+        }, 15000);
 
         createSession(newSession);
 
         // ====================================
         // 6. RETURN TO BRIDGE
         // ====================================
-        console.log(`✅ Session ${sessionId} generated successfully.`);
+        console.log(`✅ Pending Session ${sessionId} generated safely.`);
 
         return res.json({
             success: "true",
