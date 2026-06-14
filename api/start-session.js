@@ -29,7 +29,7 @@ router.post("/", async (req, res) => {
             await closeSession(existingSession.sessionId, "manual");
         }
 
-        // 3. PULL ACCOUNT BALANCES SECURELY FROM THE DB SCHEMA (Cleaned up grace_seconds)
+        // 3. PULL ACCOUNT BALANCES SECURELY FROM THE DB SCHEMA
         const { data: profile, error: dbError } = await supabase
             .from("users")
             .select("remaining_seconds")
@@ -69,29 +69,21 @@ router.post("/", async (req, res) => {
         const decartJson = await decartRes.json();
         const now = Date.now();
 
-        // 5. REGISTER SESSION ENTRY AS IMMEDIATELY LIVE (Decart token success triggered)
+        // 5. REGISTER SESSION ENTRY
         const newSession = {
             sessionId: sessionId,
             userId: userId,
             decartToken: decartJson.apiKey,
             dbSeconds: dbSeconds,
-            createdAt: now,
-            isLive: true,           // Active immediately
+            createdAt: now,         // Set initially; overwritten when stream goes live/ends to preserve billing accuracy
+            isLive: true,
             isEnding: false,
-            lastHeartbeat: now,     // Satisfies background monitor dependencies
+            lastHeartbeat: now,
             lastStreamPulse: now
         };
 
-        // 6. ESTABLISH THE MAXIMUM BALANCING CEILING TIMEOUT
-        // Forces automatic server-side termination the millisecond the balance drains out
-        const totalAllowedMs = dbSeconds * 1000;
-        newSession.timeoutHandle = setTimeout(async () => {
-            console.log(`🚨 RUNTIME EXPIRED: Session ${sessionId} reached its balance ceiling limit.`);
-            await closeSession(sessionId, "timeout");
-        }, totalAllowedMs);
-
         createSession(newSession);
-        console.log(`✅ Live Session ${sessionId} generated and activated safely.`);
+        console.log(`✅ Live Session ${sessionId} generated safely without premature timeouts.`);
 
         return res.json({
             success: "true",
