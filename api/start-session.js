@@ -68,21 +68,32 @@ router.post("/", async (req, res) => {
 
         const decartJson = await decartRes.json();
 
-        // 5. REGISTER SESSION ENTRY TO IN-MEMORY STORAGE STORE
+        const now = Date.now();
+
+        // 5. REGISTER SESSION ENTRY AS IMMEDIATELY LIVE
         const newSession = {
             sessionId: sessionId,
             userId: userId,
             decartToken: decartJson.apiKey,
             dbSeconds: dbSeconds,
             graceSeconds: graceSeconds,
-            createdAt: Date.now(),
-            isLive: false,
+            createdAt: now,
+            isLive: true,           // 🌟 FIX: Instantly mark live since the central server is authority
             isEnding: false,
-            lastStreamPulse: Date.now() // 🌟 Monitored directly by cloud data loops
+            lastHeartbeat: now,     // 🌟 FIX: Keeps your backend heartbeat-monitor.js happy
+            lastStreamPulse: now
         };
 
+        // 6. ESTABLISH THE MAXIMUM TIME LIMIT TIMEOUT CEILING
+        // If the session exceeds their balance, your server terminates it automatically
+        const totalAllowedMs = (dbSeconds + graceSeconds) * 1000;
+        newSession.timeoutHandle = setTimeout(async () => {
+            console.log(`🚨 RUNTIME EXPIRED: Session ${sessionId} reached its balance ceiling limit.`);
+            await closeSession(sessionId, "timeout");
+        }, totalAllowedMs);
+
         createSession(newSession);
-        console.log(`✅ Pending Session ${sessionId} generated safely.`);
+        console.log(`✅ Live Session ${sessionId} generated and activated safely.`);
 
         return res.json({
             success: "true",
