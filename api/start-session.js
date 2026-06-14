@@ -29,19 +29,19 @@ router.post("/", async (req, res) => {
             await closeSession(existingSession.sessionId, "manual");
         }
 
-        // 3. PULL ACCOUNT BALANCES SECURELY FROM THE DB Snapshot
+        // 3. PULL ACCOUNT BALANCES SECURELY FROM THE DB SCHEMA (Cleaned up grace_seconds)
         const { data: profile, error: dbError } = await supabase
             .from("users")
-            .select("remaining_seconds, grace_seconds")
+            .select("remaining_seconds")
             .eq("id", userId)
             .single();
 
         if (dbError || !profile) {
+            console.log("❌ DB Query failed:", dbError?.message);
             return res.json({ success: "false", message: "Failed resolving core account limits." });
         }
 
         const dbSeconds = profile.remaining_seconds;
-        const graceSeconds = profile.grace_seconds || 0;
 
         if (dbSeconds <= 0) {
             return res.json({ success: "false", message: "Insufficient account balance remaining." });
@@ -67,26 +67,24 @@ router.post("/", async (req, res) => {
         }
 
         const decartJson = await decartRes.json();
-
         const now = Date.now();
 
-        // 5. REGISTER SESSION ENTRY AS IMMEDIATELY LIVE
+        // 5. REGISTER SESSION ENTRY AS IMMEDIATELY LIVE (Decart token success triggered)
         const newSession = {
             sessionId: sessionId,
             userId: userId,
             decartToken: decartJson.apiKey,
             dbSeconds: dbSeconds,
-            graceSeconds: graceSeconds,
             createdAt: now,
-            isLive: true,           // 🌟 FIX: Instantly mark live since the central server is authority
+            isLive: true,           // Active immediately
             isEnding: false,
-            lastHeartbeat: now,     // 🌟 FIX: Keeps your backend heartbeat-monitor.js happy
+            lastHeartbeat: now,     // Satisfies background monitor dependencies
             lastStreamPulse: now
         };
 
-        // 6. ESTABLISH THE MAXIMUM TIME LIMIT TIMEOUT CEILING
-        // If the session exceeds their balance, your server terminates it automatically
-        const totalAllowedMs = (dbSeconds + graceSeconds) * 1000;
+        // 6. ESTABLISH THE MAXIMUM BALANCING CEILING TIMEOUT
+        // Forces automatic server-side termination the millisecond the balance drains out
+        const totalAllowedMs = dbSeconds * 1000;
         newSession.timeoutHandle = setTimeout(async () => {
             console.log(`🚨 RUNTIME EXPIRED: Session ${sessionId} reached its balance ceiling limit.`);
             await closeSession(sessionId, "timeout");
