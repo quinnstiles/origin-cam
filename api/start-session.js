@@ -5,11 +5,6 @@ import { closeSession } from "../lib/session-manager.js";
 
 const router = express.Router();
 
-// Global tracking object for session startup timeouts if not already initialized
-if (!global.startupTimers) {
-    global.startupTimers = new Map();
-}
-
 router.post("/", async (req, res) => {
     try {
         console.log("🚀 AUTHORITATIVE START SESSION HIT");
@@ -74,31 +69,21 @@ router.post("/", async (req, res) => {
         const decartJson = await decartRes.json();
         const now = Date.now();
 
-        // 5. REGISTER SESSION ENTRY (Set isLive to false initially until Node checks in)
+        // 5. REGISTER SESSION ENTRY
         const newSession = {
             sessionId: sessionId,
             userId: userId,
             decartToken: decartJson.apiKey,
             dbSeconds: dbSeconds,
             createdAt: now,
-            isLive: false, // 🌟 False until the node reports first frame activity
+            isLive: false,          // 🌟 FIXED: Start as false so activate-session.js can correctly lock the anchor!
             isEnding: false,
             lastHeartbeat: now,
             lastStreamPulse: now
         };
 
         createSession(newSession);
-
-        // 6. ARM THE 15-SECOND STARTUP BOMB TIMER
-        const timeoutId = setTimeout(async () => {
-            console.log(`🚨 BOMB TIMER FIRED: Session ${sessionId} failed to activate within 15s. Force terminating...`);
-            global.startupTimers.delete(sessionId);
-            await closeSession(sessionId, "startup_timeout");
-        }, 15000);
-
-        global.startupTimers.set(sessionId, timeoutId);
-
-        console.log(`✅ Session ${sessionId} generated safely. 15-second startup timer armed.`);
+        console.log(`✅ Session ${sessionId} provisioned. Awaiting activation frame...`);
 
         return res.json({
             success: "true",
