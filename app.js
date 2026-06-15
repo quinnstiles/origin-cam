@@ -12,7 +12,7 @@ dotenv.config();
 // ========================================
 import authRoute from "./api/auth.js";
 import startSessionRoute from "./api/start-session.js";
-import activateSessionRoute from "./api/activate-session.js"; // 🌟 ADDED
+import activateSessionRoute from "./api/activate-session.js";
 import endSessionRoute from "./api/end-session.js";
 import systemCheckRoute from "./api/system_check.js";
 import adminUserRouter from "./api/admin-user.js";
@@ -53,7 +53,7 @@ app.use(express.json({ limit: "10mb" }));
 // ========================================
 app.use("/api/auth", authRoute);
 app.use("/api/start-session", startSessionRoute);
-app.use("/api/activate-session", activateSessionRoute); // 🌟 ADDED
+app.use("/api/activate-session", activateSessionRoute);
 app.use("/api/end-session", endSessionRoute);
 app.use("/api/system-check", systemCheckRoute);
 
@@ -90,17 +90,18 @@ setInterval(async () => {
         const activeSessions = getAllSessions();
         const now = Date.now();
 
-        // 15 seconds without data packets = client app died or connection broke
+        // 15 seconds without a throttled heartbeat pulse from the bridge 
+        // implies the client app or the local node pipeline has terminated.
         const BACKEND_DISCONNECT_THRESHOLD = 15000;
 
         for (const session of activeSessions.values()) {
-            // 🌟 CRITICAL FIX: Only monitor live, active streams.
+            // Only evaluate active, live streaming sessions.
             // If the session hasn't been activated by the node yet, let start-session's bomb timer handle it!
             if (!session.isLive) {
                 continue;
             }
 
-            // Read stream traffic pulses instead of client app ping requests
+            // Read the 5-second throttled stream pulse timestamps sent from the bridge
             const referenceTime = session.lastStreamPulse || session.createdAt;
             const timeSinceLastPulse = now - referenceTime;
 
@@ -115,7 +116,7 @@ setInterval(async () => {
             // ====================================
             if (timeSinceLastPulse > BACKEND_DISCONNECT_THRESHOLD) {
                 console.log(
-                    `🚨 STREAM LOSS DETECTED: Session ${session.sessionId} lost media pipeline traffic for ${Math.floor(timeSinceLastPulse / 1000)}s. Closing session...`
+                    `🚨 STREAM LOSS DETECTED: Session ${session.sessionId} missed 3 consecutive heartbeat slots (${Math.floor(timeSinceLastPulse / 1000)}s total silence). Closing session...`
                 );
 
                 // Auto balance database and dump session memory map allocations
