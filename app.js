@@ -12,6 +12,7 @@ dotenv.config();
 // ========================================
 import authRoute from "./api/auth.js";
 import startSessionRoute from "./api/start-session.js";
+import activateSessionRoute from "./api/activate-session.js"; // 🌟 ADDED
 import endSessionRoute from "./api/end-session.js";
 import systemCheckRoute from "./api/system_check.js";
 import adminUserRouter from "./api/admin-user.js";
@@ -52,6 +53,7 @@ app.use(express.json({ limit: "10mb" }));
 // ========================================
 app.use("/api/auth", authRoute);
 app.use("/api/start-session", startSessionRoute);
+app.use("/api/activate-session", activateSessionRoute); // 🌟 ADDED
 app.use("/api/end-session", endSessionRoute);
 app.use("/api/system-check", systemCheckRoute);
 
@@ -92,6 +94,12 @@ setInterval(async () => {
         const BACKEND_DISCONNECT_THRESHOLD = 15000;
 
         for (const session of activeSessions.values()) {
+            // 🌟 CRITICAL FIX: Only monitor live, active streams.
+            // If the session hasn't been activated by the node yet, let start-session's bomb timer handle it!
+            if (!session.isLive) {
+                continue;
+            }
+
             // Read stream traffic pulses instead of client app ping requests
             const referenceTime = session.lastStreamPulse || session.createdAt;
             const timeSinceLastPulse = now - referenceTime;
