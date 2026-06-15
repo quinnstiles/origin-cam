@@ -1,39 +1,31 @@
+// api/end-session.js
 import express from "express";
-import { finalizeSession } from "../lib/finalizeSession.js";
 import { getSession } from "../lib/session-store.js";
+import { finalizeSession } from "../lib/finalizeSession.js";
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
     try {
         const { sessionId } = req.body;
-        console.log(`🛑 END SESSION REQUESTED FOR TARGET INSTANCE ID: ${sessionId}`);
-
         if (!sessionId) {
-            return res.status(400).json({ success: false, message: "Missing sessionId" });
+            return res.json({ success: false, message: "Missing sessionId." });
         }
 
-        const session = getSession(sessionId);
-        if (session) {
-            // 🌟 SET THE BILLING CLOCK START RIGHT HERE (Only when Decart stream went live)
-            // This ensures you don't bill the user for the 2-5 seconds spent setting up WebRTC
-            session.createdAt = Date.now();
+        // Authoritatively finalize the session and get the true remaining time
+        const result = await finalizeSession(sessionId, "manual", false);
+
+        if (result.success) {
+            return res.json({
+                success: true,
+                remainingSeconds: result.remainingSeconds // 🌟 Return the real data to the UI
+            });
+        } else {
+            return res.json({ success: false, message: "Failed finalizing session calculations." });
         }
-
-        const summary = await finalizeSession(sessionId, "manual", false);
-        const balanceResponse = summary && typeof summary.remainingSeconds !== 'undefined'
-            ? summary.remainingSeconds
-            : 0;
-
-        return res.json({
-            success: true,
-            message: "Session closed successfully",
-            remainingSeconds: Number(balanceResponse)
-        });
-
     } catch (err) {
-        console.log("❌ END SESSION ROUTER ERROR:", err.message);
-        return res.status(500).json({ success: false, message: err.message });
+        console.log("❌ END SESSION ROUTE ERROR:", err.message);
+        return res.json({ success: false, message: err.message });
     }
 });
 
