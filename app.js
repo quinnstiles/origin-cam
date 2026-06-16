@@ -90,17 +90,30 @@ setInterval(async () => {
         const activeSessions = getAllSessions();
         const now = Date.now();
 
-        // 🌟 FIX 1: Reduced to 6 seconds for swift testing
+        // 🌟 Swift testing evaluation thresholds
         const BACKEND_DISCONNECT_THRESHOLD = 6000;
+        const ACTIVATION_GRACE_PERIOD = 6000; // 🌟 6 seconds max to activate after start-session
 
         for (const session of activeSessions.values()) {
-            // Only evaluate active, live streaming sessions.
+
+            // ------------------------------------
+            // 🌟 UN-ACTIVATED SESSIONS LOOPGUARD
+            // ------------------------------------
             if (!session.isLive) {
-                continue;
+                const timeSinceCreation = now - session.createdAt;
+                if (timeSinceCreation > ACTIVATION_GRACE_PERIOD) {
+                    console.log(`🚨 [STARTUP TIMEOUT] Session ${session.sessionId} failed to send an activation frame within ${ACTIVATION_GRACE_PERIOD / 1000}s. Evicting dead payload.`);
+                    await finalizeSession(
+                        session.sessionId,
+                        "stream-activity-lost",
+                        false
+                    );
+                }
+                continue; // Move to next session file context safely
             }
 
             // ------------------------------------
-            // 🌟 FIX 2: HARD LIVE OVER-STREAM PROTECTION
+            // HARD LIVE OVER-STREAM PROTECTION
             // ------------------------------------
             const elapsedSeconds = Math.ceil((now - session.createdAt) / 1000);
 
@@ -111,7 +124,7 @@ setInterval(async () => {
                     "balance-depleted",
                     false
                 );
-                continue; // Move to next session
+                continue;
             }
 
             // ------------------------------------
@@ -141,7 +154,8 @@ setInterval(async () => {
     } catch (err) {
         console.error("❌ GLOBAL STREAM ENGINE MONITOR FAILURE:", err);
     }
-}, 2000); // 🌟 FIX 1: Run loop checking every 2 seconds to accurately enforce a 6s window
+}, 1000); // 🌟 Run loop every 1 second for ultra-tight precision checking
+
 // ========================================
 // SERVER
 // ========================================
