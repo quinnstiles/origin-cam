@@ -12,30 +12,22 @@ router.post("/", async (req, res) => {
 
         const session = getSession(sessionId);
 
-        // 🌟 GATEWAY RULE 1: If the dynamic watchdog loop already cleared the ticket or zeroed out balance, reject instantly!
+        // 🌟 ZERO-TRUST GATEWAY RULE: If the app.js watchdog countdown already expired and 
+        // penalized the account to 0 (or evicted it), block late activations instantly!
         if (!session) {
             return res.json({ success: "false", message: "Session not found, expired, or balance has been written down to 0." });
         }
 
         const now = Date.now();
 
-        // 🌟 GATEWAY RULE 2: Proactive threshold network guard
-        if (session.isLive) {
-            const elapsedSeconds = Math.ceil((now - session.createdAt) / 1000);
-            if (elapsedSeconds >= session.dbSeconds) {
-                console.log(`🚨 [GATEWAY PROTECTION] Force-blocking activation payload for ${sessionId}. Balance exhausted.`);
-                return res.json({ success: "false", message: "Session balance allocation fully exhausted." });
-            }
-        }
-
-        // 1. ACTIVATE BILLING CLOCK FROM THIS EXACT MILLISECOND
+        // 1. ENGAGE BILLING CLOCK FROM THIS EXACT MILLISECOND
         if (!session.isLive) {
             session.isLive = true;
-            session.createdAt = now; // The active consumption countdown officially begins right now
+            session.createdAt = now; // The countdown officially begins right now
             console.log(`🎥 Stream confirmed live. Billing engine engaged for: ${sessionId}`);
         }
 
-        // Keep interval loop data synchronized
+        // Initialize the tracking timestamp so app.js knows when the live stream started
         session.lastStreamPulse = now;
 
         return res.json({ success: "true", message: "Session activated successfully." });
