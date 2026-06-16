@@ -75,14 +75,15 @@ router.post("/", async (req, res) => {
         const decartJson = await decartRes.json();
         const now = Date.now();
 
-        // 5. REGISTER SESSION ENTRY
+        // 5. REGISTER SESSION ENTRY (Mapping explicit real properties)
         const newSession = {
             sessionId: sessionId,
             userId: userId,
             decartToken: decartJson.apiKey,
+            decartSessionId: decartJson.apiKey, // 🌟 REAL VALUE: The generated ephemeral token is the stream handle
             dbSeconds: dbSeconds,
             createdAt: now,
-            isLive: false,          // 🌟 FIXED: Start as false so activate-session.js can correctly lock the anchor!
+            isLive: false,
             isEnding: false,
             lastHeartbeat: now,
             lastStreamPulse: now
