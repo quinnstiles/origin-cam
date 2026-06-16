@@ -91,41 +91,35 @@ setInterval(async () => {
         const activeSessions = getAllSessions();
         const now = Date.now();
 
-        // Strict 10-second window for Node to respond/activate the stream
-        const NODE_HANDSHAKE_TIMEOUT = 10000;
+        // 🌟 Define the exact absolute independent lifetime (10 seconds)
+        const ABSOLUTE_KILL_THRESHOLD = 10000;
 
         for (const session of activeSessions.values()) {
 
-            // 🌟 CHECK 1: NODE RESPONSE VERIFICATION
-            // If the session has NOT been activated by Node yet (isLive is false)
-            if (!session.isLive) {
-                const timeWaitingForNode = now - session.createdAt;
+            // 🌟 FORCE INDEPENDENT TIMEOUT MATH
+            // We calculate time purely from the moment start-session created the memory object.
+            const totalLifetime = now - session.createdAt;
 
-                if (timeWaitingForNode >= NODE_HANDSHAKE_TIMEOUT) {
-                    console.log(`🚨 [NODE TIMEOUT] Session ${session.sessionId} failed to respond or activate within ${NODE_HANDSHAKE_TIMEOUT / 1000}s. Terminating dead session ticket.`);
+            if (totalLifetime >= ABSOLUTE_KILL_THRESHOLD) {
+                console.log(`🚨 [INDEPENDENT AUTOMATIC KILL] Session ${session.sessionId} reached its maximum 10-second deadline. Wiping session immediately regardless of client state.`);
 
-                    await finalizeSession(
-                        session.sessionId,
-                        "stream-activity-lost",
-                        false
-                    );
-                }
-                continue; // Move to the next session, ignoring live calculations for this ticket
+                await finalizeSession(
+                    session.sessionId,
+                    "stream-activity-lost", // Keeps your standard breakdown reason intact
+                    false
+                );
+                continue; // Move directly to the next session
             }
 
             // ------------------------------------
-            // 🌟 CHECK 2: RUNNING LIVE STREAM PROTECTION
+            // HARD LIVE OVER-STREAM PROTECTION (Fallback check for user balances)
             // ------------------------------------
-            // If Node DID respond within 10s, the stream is live. Track normal wallet balance consumption.
-            const elapsedSeconds = Math.ceil((now - session.createdAt) / 1000);
-
-            if (elapsedSeconds >= session.dbSeconds) {
-                console.log(`🛑 [OVER-STREAM CUTOFF] Live Session ${session.sessionId} reached allocated balance (${session.dbSeconds}s). Shutting down execution.`);
-                await finalizeSession(
-                    session.sessionId,
-                    "balance-depleted",
-                    false
-                );
+            if (session.isLive) {
+                const elapsedSeconds = Math.ceil((now - session.createdAt) / 1000);
+                if (elapsedSeconds >= session.dbSeconds) {
+                    console.log(`🛑 [OVER-STREAM CUTOFF] Session ${session.sessionId} reached allocated balance.`);
+                    await finalizeSession(session.sessionId, "balance-depleted", false);
+                }
             }
         }
     } catch (err) {
