@@ -90,18 +90,33 @@ setInterval(async () => {
         const activeSessions = getAllSessions();
         const now = Date.now();
 
-        // 15 seconds without a throttled heartbeat pulse from the bridge 
-        // implies the client app or the local node pipeline has terminated.
-        const BACKEND_DISCONNECT_THRESHOLD = 15000;
+        // 🌟 FIX 1: Reduced to 6 seconds for swift testing
+        const BACKEND_DISCONNECT_THRESHOLD = 6000;
 
         for (const session of activeSessions.values()) {
             // Only evaluate active, live streaming sessions.
-            // If the session hasn't been activated by the node yet, let start-session's bomb timer handle it!
             if (!session.isLive) {
                 continue;
             }
 
-            // Read the 5-second throttled stream pulse timestamps sent from the bridge
+            // ------------------------------------
+            // 🌟 FIX 2: HARD LIVE OVER-STREAM PROTECTION
+            // ------------------------------------
+            const elapsedSeconds = Math.ceil((now - session.createdAt) / 1000);
+
+            if (elapsedSeconds >= session.dbSeconds) {
+                console.log(`🛑 [OVER-STREAM CUTOFF] Session ${session.sessionId} reached allocated balance (${session.dbSeconds}s). Shutting down execution.`);
+                await finalizeSession(
+                    session.sessionId,
+                    "balance-depleted",
+                    false
+                );
+                continue; // Move to next session
+            }
+
+            // ------------------------------------
+            // AUTOMATIC CRASH & DISCONNECT TEARDOWN
+            // ------------------------------------
             const referenceTime = session.lastStreamPulse || session.createdAt;
             const timeSinceLastPulse = now - referenceTime;
 
@@ -111,15 +126,11 @@ setInterval(async () => {
                 continue;
             }
 
-            // ====================================
-            // AUTOMATIC CRASH & DISCONNECT TEARDOWN
-            // ====================================
             if (timeSinceLastPulse > BACKEND_DISCONNECT_THRESHOLD) {
                 console.log(
-                    `🚨 STREAM LOSS DETECTED: Session ${session.sessionId} missed 3 consecutive heartbeat slots (${Math.floor(timeSinceLastPulse / 1000)}s total silence). Closing session...`
+                    `🚨 STREAM LOSS DETECTED: Session ${session.sessionId} missed heartbeat deadlines (${Math.floor(timeSinceLastPulse / 1000)}s total silence). Closing session...`
                 );
 
-                // Auto balance database and dump session memory map allocations
                 await finalizeSession(
                     session.sessionId,
                     "stream-activity-lost",
@@ -130,8 +141,7 @@ setInterval(async () => {
     } catch (err) {
         console.error("❌ GLOBAL STREAM ENGINE MONITOR FAILURE:", err);
     }
-}, 5000); // Check statuses cleanly every 5 seconds
-
+}, 2000); // 🌟 FIX 1: Run loop checking every 2 seconds to accurately enforce a 6s window
 // ========================================
 // SERVER
 // ========================================

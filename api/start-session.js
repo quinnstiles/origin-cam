@@ -41,10 +41,16 @@ router.post("/", async (req, res) => {
             return res.json({ success: "false", message: "Failed resolving core account limits." });
         }
 
-        const dbSeconds = profile.remaining_seconds;
+        const dbSeconds = profile ? profile.remaining_seconds : 0;
+        console.log(`💳 User Account Balance Retrieved: ${dbSeconds}s`);
 
-        if (dbSeconds <= 0) {
-            return res.json({ success: "false", message: "Insufficient account balance remaining." });
+        // 🌟 FIX 3: ENFORCE 11-SECOND FLOOR
+        if (dbSeconds < 11) {
+            console.log(`❌ [START DENIED] User ${userId} has insufficient balance: ${dbSeconds}s. Minimum 11s required.`);
+            return res.json({
+                success: "false",
+                message: "Insufficient balance. You need at least 11 seconds remaining to start a session."
+            });
         }
 
         const sessionId = "session_" + Date.now();

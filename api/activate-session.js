@@ -15,6 +15,8 @@ router.post("/", async (req, res) => {
             return res.json({ success: "false", message: "Session not found or already terminated." });
         }
 
+        const now = Date.now();
+
         // 1. DEFUSE THE STARTUP BOMB TIMER
         if (global.startupTimers && global.startupTimers.has(sessionId)) {
             clearTimeout(global.startupTimers.get(sessionId));
@@ -25,9 +27,12 @@ router.post("/", async (req, res) => {
         // 2. ACTIVATE BILLING CLOCK FROM THIS EXACT MILLISECOND
         if (!session.isLive) {
             session.isLive = true;
-            session.createdAt = Date.now(); // 🌟 The clock officially starts now!
+            session.createdAt = now; // 🌟 The clock officially starts now!
             console.log(`🎥 Stream went live. Billing clock started for: ${sessionId}`);
         }
+
+        // 🌟 ADD THIS: Track the pulse timestamp for the app.js watchdog interval loop
+        session.lastStreamPulse = now;
 
         return res.json({ success: "true", message: "Session activated successfully." });
 
