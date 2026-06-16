@@ -11,11 +11,24 @@ router.post("/", async (req, res) => {
         }
 
         const session = getSession(sessionId);
+
+        // 🌟 GATEWAY RULE 1: If the session has been evicted by the watchdog loop, reject instantly!
         if (!session) {
             return res.json({ success: "false", message: "Session not found or already terminated." });
         }
 
         const now = Date.now();
+
+        // 🌟 GATEWAY RULE 2: Proactive real-time threshold guard.
+        // If the stream is live, calculate usage immediately during the incoming request.
+        // This stops a hacked client right at the network boundary, even between watchdog interval ticks.
+        if (session.isLive) {
+            const elapsedSeconds = Math.ceil((now - session.createdAt) / 1000);
+            if (elapsedSeconds >= session.dbSeconds) {
+                console.log(`🚨 [GATEWAY PROTECTION] Force-blocking pulse request for ${sessionId}. Usage (${elapsedSeconds}s) has exceeded balance limit (${session.dbSeconds}s).`);
+                return res.json({ success: "false", message: "Session balance allocation fully exhausted." });
+            }
+        }
 
         // 1. DEFUSE THE STARTUP BOMB TIMER
         if (global.startupTimers && global.startupTimers.has(sessionId)) {
@@ -31,7 +44,7 @@ router.post("/", async (req, res) => {
             console.log(`🎥 Stream went live. Billing clock started for: ${sessionId}`);
         }
 
-        // 🌟 ADD THIS: Track the pulse timestamp for the app.js watchdog interval loop
+        // 🌟 Track the pulse timestamp for the app.js watchdog interval loop
         session.lastStreamPulse = now;
 
         return res.json({ success: "true", message: "Session activated successfully." });
