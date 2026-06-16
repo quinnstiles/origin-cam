@@ -9,7 +9,7 @@ router.post("/", async (req, res) => {
     try {
         console.log("🚀 AUTHORITATIVE START SESSION HIT");
 
-        const { token, duration_limit_sec } = req.body;
+        const { token } = req.body;
         if (!token) {
             return res.json({ success: "false", message: "Missing authorization token." });
         }
@@ -44,7 +44,6 @@ router.post("/", async (req, res) => {
         const dbSeconds = profile ? profile.remaining_seconds : 0;
         console.log(`💳 User Account Balance Retrieved: ${dbSeconds}s`);
 
-        // 🌟 FIX 3: ENFORCE 11-SECOND FLOOR
         if (dbSeconds < 11) {
             console.log(`❌ [START DENIED] User ${userId} has insufficient balance: ${dbSeconds}s. Minimum 11s required.`);
             return res.json({
@@ -63,7 +62,7 @@ router.post("/", async (req, res) => {
                 "x-api-key": process.env.DECART_API_KEY
             },
             body: JSON.stringify({
-                duration_limit_sec: Math.min(dbSeconds, duration_limit_sec || 3600)
+                duration_limit_sec: dbSeconds // 🌟 Pass exact database balance as hard hardware ceiling
             })
         });
 
@@ -75,12 +74,12 @@ router.post("/", async (req, res) => {
         const decartJson = await decartRes.json();
         const now = Date.now();
 
-        // 5. REGISTER SESSION ENTRY (Mapping explicit real properties)
+        // 5. REGISTER SESSION ENTRY 
         const newSession = {
             sessionId: sessionId,
             userId: userId,
             decartToken: decartJson.apiKey,
-            decartSessionId: decartJson.apiKey, // 🌟 REAL VALUE: The generated ephemeral token is the stream handle
+            decartSessionId: decartJson.apiKey,
             dbSeconds: dbSeconds,
             createdAt: now,
             isLive: false,

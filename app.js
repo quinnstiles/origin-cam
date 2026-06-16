@@ -91,35 +91,49 @@ setInterval(async () => {
         const activeSessions = getAllSessions();
         const now = Date.now();
 
-        // 🌟 Define the exact absolute independent lifetime (10 seconds)
-        const ABSOLUTE_KILL_THRESHOLD = 10000;
-
         for (const session of activeSessions.values()) {
+            const elapsedMilliseconds = now - session.createdAt;
+            const elapsedSeconds = Math.ceil(elapsedMilliseconds / 1000);
 
-            // 🌟 FORCE INDEPENDENT TIMEOUT MATH
-            // We calculate time purely from the moment start-session created the memory object.
-            const totalLifetime = now - session.createdAt;
+            // ------------------------------------------------------------
+            // 🛡️ LOGIC 1 & 1b: UN-ACTIVATED HANDSHAKE WATCHDOG (ZERO-TRUST Posture)
+            // ------------------------------------------------------------
+            if (!session.isLive) {
+                // Balance-driven limit: The user's wallet dictates the startup grace period
+                const maximumStartupGraceMs = session.dbSeconds * 1000;
 
-            if (totalLifetime >= ABSOLUTE_KILL_THRESHOLD) {
-                console.log(`🚨 [INDEPENDENT AUTOMATIC KILL] Session ${session.sessionId} reached its maximum 10-second deadline. Wiping session immediately regardless of client state.`);
+                if (elapsedMilliseconds >= maximumStartupGraceMs) {
+                    console.log(`🚨 [WATCHDOG BREAKDOWN] Session ${session.sessionId} failed to activate within dynamic wallet limit of ${session.dbSeconds}s.`);
+                    console.log(`💀 [ZERO-TRUST PENALTY] Setting database profile balance to 0s for user: ${session.userId}`);
 
-                await finalizeSession(
-                    session.sessionId,
-                    "stream-activity-lost", // Keeps your standard breakdown reason intact
-                    false
-                );
-                continue; // Move directly to the next session
+                    // 1. Authoritatively lock database profile balance to zero
+                    await supabase
+                        .from("users")
+                        .update({ remaining_seconds: 0 })
+                        .eq("id", session.userId);
+
+                    // 2. Kill the session by clearing memory cache tracking paths
+                    await finalizeSession(session.sessionId, "stream-activity-lost", false);
+                }
+                continue; // Move strictly to next session ticket evaluation
             }
 
-            // ------------------------------------
-            // HARD LIVE OVER-STREAM PROTECTION (Fallback check for user balances)
-            // ------------------------------------
-            if (session.isLive) {
-                const elapsedSeconds = Math.ceil((now - session.createdAt) / 1000);
-                if (elapsedSeconds >= session.dbSeconds) {
-                    console.log(`🛑 [OVER-STREAM CUTOFF] Session ${session.sessionId} reached allocated balance.`);
-                    await finalizeSession(session.sessionId, "balance-depleted", false);
-                }
+            // ------------------------------------------------------------
+            // 🔄 LOGIC 2: ACTIVE LIVE STREAM BILLING CLOCK
+            // ------------------------------------------------------------
+            if (elapsedSeconds >= session.dbSeconds) {
+                console.log(`🛑 [OVER-STREAM CUTOFF] Live Session ${session.sessionId} reached absolute allocated balance (${session.dbSeconds}s).`);
+                await finalizeSession(session.sessionId, "balance-depleted", false);
+                continue;
+            }
+
+            // ------------------------------------------------------------
+            // 📡 LOGIC 3: MID-STREAM SILENCE GUARD (Loss of Pulse)
+            // ------------------------------------------------------------
+            const SILENCE_THRESHOLD_MS = 6000; // 6 seconds
+            if (now - session.lastStreamPulse > SILENCE_THRESHOLD_MS) {
+                console.log(`⚠️ [HEARTBEAT LOSS] Live Session ${session.sessionId} went silent. Finalizing fractional billing usage.`);
+                await finalizeSession(session.sessionId, "stream-activity-lost", false);
             }
         }
     } catch (err) {
