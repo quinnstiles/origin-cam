@@ -96,26 +96,26 @@ setInterval(async () => {
             const elapsedSeconds = Math.ceil(elapsedMilliseconds / 1000);
 
             // ------------------------------------------------------------
-            // 🛡️ LOGIC 1 & 1b: UN-ACTIVATED HANDSHAKE WATCHDOG (ZERO-TRUST Posture)
+            // 🛡️ LOGIC 1: UN-ACTIVATED HANDSHAKE WATCHDOG (ZERO-TRUST POSTURE)
             // ------------------------------------------------------------
             if (!session.isLive) {
-                // Balance-driven limit: The user's wallet dictates the startup grace period
+                // The starting wallet balance acts as the precise window boundary
                 const maximumStartupGraceMs = session.dbSeconds * 1000;
 
                 if (elapsedMilliseconds >= maximumStartupGraceMs) {
                     console.log(`🚨 [WATCHDOG BREAKDOWN] Session ${session.sessionId} failed to activate within dynamic wallet limit of ${session.dbSeconds}s.`);
                     console.log(`💀 [ZERO-TRUST PENALTY] Setting database profile balance to 0s for user: ${session.userId}`);
 
-                    // 1. Authoritatively lock database profile balance to zero
+                    // 1. Authoritatively penalize the database balance to zero
                     await supabase
                         .from("users")
                         .update({ remaining_seconds: 0 })
                         .eq("id", session.userId);
 
-                    // 2. Kill the session by clearing memory cache tracking paths
+                    // 2. Clear memory references and terminate the local tracking ticket
                     await finalizeSession(session.sessionId, "stream-activity-lost", false);
                 }
-                continue; // Move strictly to next session ticket evaluation
+                continue; // Skip straight to evaluating the next active session ticket
             }
 
             // ------------------------------------------------------------
@@ -124,16 +124,6 @@ setInterval(async () => {
             if (elapsedSeconds >= session.dbSeconds) {
                 console.log(`🛑 [OVER-STREAM CUTOFF] Live Session ${session.sessionId} reached absolute allocated balance (${session.dbSeconds}s).`);
                 await finalizeSession(session.sessionId, "balance-depleted", false);
-                continue;
-            }
-
-            // ------------------------------------------------------------
-            // 📡 LOGIC 3: MID-STREAM SILENCE GUARD (Loss of Pulse)
-            // ------------------------------------------------------------
-            const SILENCE_THRESHOLD_MS = 6000; // 6 seconds
-            if (now - session.lastStreamPulse > SILENCE_THRESHOLD_MS) {
-                console.log(`⚠️ [HEARTBEAT LOSS] Live Session ${session.sessionId} went silent. Finalizing fractional billing usage.`);
-                await finalizeSession(session.sessionId, "stream-activity-lost", false);
             }
         }
     } catch (err) {
