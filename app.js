@@ -85,76 +85,47 @@ app.get("/", (req, res) => {
 // ========================================
 // SERVER-SIDE STREAM MONITORING ENGINE
 // ========================================
+
 setInterval(async () => {
     try {
         const activeSessions = getAllSessions();
         const now = Date.now();
 
-        // 🌟 Swift testing evaluation thresholds
-        const BACKEND_DISCONNECT_THRESHOLD = 6000;
-        const ACTIVATION_GRACE_PERIOD = 6000; // 🌟 6 seconds max to activate after start-session
+        // 🌟 Define the exact absolute independent lifetime (10 seconds)
+        const ABSOLUTE_KILL_THRESHOLD = 10000;
 
         for (const session of activeSessions.values()) {
 
+            // 🌟 FORCE INDEPENDENT TIMEOUT MATH
+            // We calculate time purely from the moment start-session created the memory object.
+            const totalLifetime = now - session.createdAt;
+
+            if (totalLifetime >= ABSOLUTE_KILL_THRESHOLD) {
+                console.log(`🚨 [INDEPENDENT AUTOMATIC KILL] Session ${session.sessionId} reached its maximum 10-second deadline. Wiping session immediately regardless of client state.`);
+
+                await finalizeSession(
+                    session.sessionId,
+                    "stream-activity-lost", // Keeps your standard breakdown reason intact
+                    false
+                );
+                continue; // Move directly to the next session
+            }
+
             // ------------------------------------
-            // 🌟 UN-ACTIVATED SESSIONS LOOPGUARD
+            // HARD LIVE OVER-STREAM PROTECTION (Fallback check for user balances)
             // ------------------------------------
-            if (!session.isLive) {
-                const timeSinceCreation = now - session.createdAt;
-                if (timeSinceCreation > ACTIVATION_GRACE_PERIOD) {
-                    console.log(`🚨 [STARTUP TIMEOUT] Session ${session.sessionId} failed to send an activation frame within ${ACTIVATION_GRACE_PERIOD / 1000}s. Evicting dead payload.`);
-                    await finalizeSession(
-                        session.sessionId,
-                        "stream-activity-lost",
-                        false
-                    );
+            if (session.isLive) {
+                const elapsedSeconds = Math.ceil((now - session.createdAt) / 1000);
+                if (elapsedSeconds >= session.dbSeconds) {
+                    console.log(`🛑 [OVER-STREAM CUTOFF] Session ${session.sessionId} reached allocated balance.`);
+                    await finalizeSession(session.sessionId, "balance-depleted", false);
                 }
-                continue; // Move to next session file context safely
-            }
-
-            // ------------------------------------
-            // HARD LIVE OVER-STREAM PROTECTION
-            // ------------------------------------
-            const elapsedSeconds = Math.ceil((now - session.createdAt) / 1000);
-
-            if (elapsedSeconds >= session.dbSeconds) {
-                console.log(`🛑 [OVER-STREAM CUTOFF] Session ${session.sessionId} reached allocated balance (${session.dbSeconds}s). Shutting down execution.`);
-                await finalizeSession(
-                    session.sessionId,
-                    "balance-depleted",
-                    false
-                );
-                continue;
-            }
-
-            // ------------------------------------
-            // AUTOMATIC CRASH & DISCONNECT TEARDOWN
-            // ------------------------------------
-            const referenceTime = session.lastStreamPulse || session.createdAt;
-            const timeSinceLastPulse = now - referenceTime;
-
-            if (isNaN(timeSinceLastPulse)) {
-                console.log(`⚠️ Warning: Session ${session.sessionId} has missing stream timing tracking.`);
-                session.lastStreamPulse = Date.now();
-                continue;
-            }
-
-            if (timeSinceLastPulse > BACKEND_DISCONNECT_THRESHOLD) {
-                console.log(
-                    `🚨 STREAM LOSS DETECTED: Session ${session.sessionId} missed heartbeat deadlines (${Math.floor(timeSinceLastPulse / 1000)}s total silence). Closing session...`
-                );
-
-                await finalizeSession(
-                    session.sessionId,
-                    "stream-activity-lost",
-                    false
-                );
             }
         }
     } catch (err) {
         console.error("❌ GLOBAL STREAM ENGINE MONITOR FAILURE:", err);
     }
-}, 1000); // 🌟 Run loop every 1 second for ultra-tight precision checking
+}, 1000);
 
 // ========================================
 // SERVER
