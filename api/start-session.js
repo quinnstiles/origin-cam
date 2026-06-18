@@ -78,8 +78,7 @@ router.post("/", async (req, res) => {
         const newSession = {
             sessionId: sessionId,
             userId: userId,
-            decartToken: decartJson.apiKey,
-            decartSessionId: decartJson.apiKey,
+            decartToken: decartJson.apiKey, // Keep this! Your local bridge needs it to connect.
             dbSeconds: dbSeconds,
             createdAt: now,
             isLive: false,
