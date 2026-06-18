@@ -62,7 +62,12 @@ router.post("/", async (req, res) => {
                 "x-api-key": process.env.DECART_API_KEY
             },
             body: JSON.stringify({
-                duration_limit_sec: dbSeconds // 🌟 Pass exact database balance as hard hardware ceiling
+                expiresIn: 300, // Token can be used to connect within 5 minutes
+                constraints: {
+                    realtime: {
+                        maxSessionDuration: dbSeconds // 🌟 THIS IS THE OFFICIAL DECART FIELD (Minimum 10)
+                    }
+                }
             })
         });
 
