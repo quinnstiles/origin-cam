@@ -1,7 +1,7 @@
 import express from "express";
 import { supabase } from "../lib/supabase.js";
 import { createSession, getUserSession } from "../lib/session-store.js";
-import { closeSession } from "../lib/session-manager.js";
+import { finalizeSession } from "../lib/finalizeSession.js";
 
 const router = express.Router();
 
@@ -22,17 +22,17 @@ router.post("/", async (req, res) => {
         }
         const userId = user.id;
 
-        // 2. FORCE CLEAN SLATE (TEARDOWN PREVIOUS OVERLAPPING SESSIONS)
-        const existingSession = getUserSession(userId);
-        if (existingSession) {
-            console.log(`⚠️ Conflict detected for user ${userId}. Active session ID: ${existingSession.sessionId}`);
-            await closeSession(existingSession.sessionId, "manual");
+        // 2. CONCURRENCY CONTROL: CHECK LOCAL MEMORY CACHE
+        const existingLocalSession = getUserSession(userId);
+        if (existingLocalSession) {
+            console.log(`⚠️ Conflict detected in local cache for user ${userId}. Active local session ID: ${existingLocalSession.sessionId}`);
+            await finalizeSession(existingLocalSession.sessionId, "manual", false);
         }
 
-        // 3. PULL ACCOUNT BALANCES SECURELY FROM THE DB SCHEMA
+        // 3. SECURE CROSS-MACHINE GUARD: PULL PROFILE AND CHECK FOR OUT-OF-SYNC REMOTE SESSIONS
         const { data: profile, error: dbError } = await supabase
             .from("users")
-            .select("remaining_seconds")
+            .select("remaining_seconds, active_session_id")
             .eq("id", userId)
             .single();
 
@@ -41,7 +41,23 @@ router.post("/", async (req, res) => {
             return res.json({ success: "false", message: "Failed resolving core account limits." });
         }
 
-        const dbSeconds = profile ? profile.remaining_seconds : 0;
+        // If a session was left unfinalized on another machine, run an authoritative finalization on it first
+        if (profile.active_session_id && (!existingLocalSession || existingLocalSession.sessionId !== profile.active_session_id)) {
+            console.log(`🛡️ [CROSS-MACHINE GUARD] Found unfinalized remote session ${profile.active_session_id} on database layout. Clearing...`);
+
+            await finalizeSession(profile.active_session_id, "forced-cleanup", false);
+
+            // Re-fetch clean wallet variables after finalization settlement
+            const { data: refreshedProfile } = await supabase
+                .from("users")
+                .select("remaining_seconds")
+                .eq("id", userId)
+                .single();
+
+            profile.remaining_seconds = refreshedProfile?.remaining_seconds || 0;
+        }
+
+        let dbSeconds = profile.remaining_seconds || 0;
         console.log(`💳 User Account Balance Retrieved: ${dbSeconds}s`);
 
         if (dbSeconds < 11) {
@@ -62,10 +78,10 @@ router.post("/", async (req, res) => {
                 "x-api-key": process.env.DECART_API_KEY
             },
             body: JSON.stringify({
-                expiresIn: 300, // Token can be used to connect within 5 minutes
+                expiresIn: 300,
                 constraints: {
                     realtime: {
-                        maxSessionDuration: dbSeconds // 🌟 THIS IS THE OFFICIAL DECART FIELD (Minimum 10)
+                        maxSessionDuration: dbSeconds
                     }
                 }
             })
@@ -79,11 +95,24 @@ router.post("/", async (req, res) => {
         const decartJson = await decartRes.json();
         const now = Date.now();
 
-        // 5. REGISTER SESSION ENTRY 
+        // 5. ATOMIC STATE SYNC TO SUPABASE
+        const { error: stateUpdateError } = await supabase
+            .from("users")
+            .update({
+                active_session_id: sessionId,
+                session_is_live: false
+            })
+            .eq("id", userId);
+
+        if (stateUpdateError) {
+            throw new Error(`Failed to commit new active session tracking metadata to Supabase: ${stateUpdateError.message}`);
+        }
+
+        // 6. REGISTER SESSION ENTRY TO LOCAL MEMORY CACHE
         const newSession = {
             sessionId: sessionId,
             userId: userId,
-            decartToken: decartJson.apiKey, // Keep this! Your local bridge needs it to connect.
+            decartToken: decartJson.apiKey,
             dbSeconds: dbSeconds,
             createdAt: now,
             isLive: false,
@@ -93,7 +122,7 @@ router.post("/", async (req, res) => {
         };
 
         createSession(newSession);
-        console.log(`✅ Session ${sessionId} provisioned. Awaiting activation frame...`);
+        console.log(`✅ Session ${sessionId} provisioned globally. Awaiting activation frame...`);
 
         return res.json({
             success: "true",
