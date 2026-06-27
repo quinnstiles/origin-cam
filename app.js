@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { supabase } from "./lib/supabase.js";
 
 // ========================================
 // LOAD ENV
@@ -83,67 +82,6 @@ app.get("/", (req, res) => {
     });
 });
 
-// ========================================
-// SERVER-SIDE STREAM MONITORING ENGINE
-// ========================================
-setInterval(async () => {
-    try {
-        const activeSessions = getAllSessions();
-        const now = Date.now();
-
-        for (const session of activeSessions.values()) {
-            const elapsedMilliseconds = now - session.createdAt;
-            const elapsedSeconds = Math.ceil(elapsedMilliseconds / 1000);
-
-            // ------------------------------------------------------------
-            // 🛡️ LOGIC 1: UN-ACTIVATED HANDSHAKE WATCHDOG (ZERO-TRUST POSTURE)
-            // ------------------------------------------------------------
-            if (!session.isLive) {
-                const maximumStartupGraceMs = session.dbSeconds * 1000;
-
-                if (elapsedMilliseconds >= maximumStartupGraceMs) {
-                    console.log(`🚨 [WATCHDOG BREAKDOWN] Session ${session.sessionId} failed to activate within dynamic wallet limit of ${session.dbSeconds}s.`);
-                    console.log(`💀 [ZERO-TRUST PENALTY] Zeroing balance and clearing states in Supabase for user: ${session.userId}`);
-
-                    // 1. Clear state flags and authoritatively penalize balance to zero
-                    await supabase
-                        .from("users")
-                        .update({
-                            remaining_seconds: 0,
-                            active_session_id: null,
-                            session_is_live: false
-                        })
-                        .eq("id", session.userId);
-
-                    // 2. Clear memory references and terminate local tracking ticket
-                    await finalizeSession(session.sessionId, "stream-activity-lost", false);
-                }
-                continue;
-            }
-
-            // ------------------------------------------------------------
-            // 🔄 LOGIC 2: ACTIVE LIVE STREAM BILLING CLOCK
-            // ------------------------------------------------------------
-            if (elapsedSeconds >= session.dbSeconds) {
-                console.log(`🛑 [OVER-STREAM CUTOFF] Live Session ${session.sessionId} reached absolute allocated balance (${session.dbSeconds}s).`);
-
-                // Clear state tracking metrics in Supabase
-                await supabase
-                    .from("users")
-                    .update({
-                        active_session_id: null,
-                        session_is_live: false
-                    })
-                    .eq("id", session.userId);
-
-                // Authoritatively calculate database write-backs and clear cache
-                await finalizeSession(session.sessionId, "balance-depleted", false);
-            }
-        }
-    } catch (err) {
-        console.error("❌ GLOBAL STREAM ENGINE MONITOR FAILURE:", err);
-    }
-}, 1000);
 
 // ========================================
 // SERVER
