@@ -140,28 +140,29 @@ wss.on("connection", (ws, req) => {
                 session.isLive = true;
                 console.log(`🏁 [ENGINE] WebRTC frames detected for ${sessionId}. Cloud billing countdown started.`);
 
-                // 🕒 3. AUTHORITATIVE CLOUD MASTER COUNTDOWN LOOP
+                // Inside your app.js WebSocket Server Connection Loop:
                 countdownInterval = setInterval(async () => {
                     if (currentBalance <= 0) {
                         clearInterval(countdownInterval);
-                        ws.send(JSON.stringify({ command: "TERMINATE_IMMEDIATE", error: "Wallet balance fully depleted." }));
                         ws.close();
                         return;
                     }
 
                     currentBalance--;
-                    session.dbSeconds = currentBalance; // Keep store object accurate
+                    session.dbSeconds = currentBalance;
 
-                    // Push the live server remaining seconds directly down to the app UI view
-                    ws.send(JSON.stringify({
-                        command: "TICK",
-                        remainingSeconds: currentBalance
-                    }));
+                    // 🌟 FIX: Structure payload specifically to align with C++ ixwebsocket key expectations
+                    if (ws.readyState === 1) { // OPEN
+                        ws.send(JSON.stringify({
+                            type: "countdown",
+                            seconds: currentBalance
+                        }));
+                    }
 
                     // Database balance batch syncs executed safely every 5 ticks
                     if (currentBalance % 5 === 0) {
-                        await supabase.from("users").update({ remaining_seconds: currentBalance }).eq("id", session.userId);
-                    }
+                        await supabase.from("users").update({ remaining_seconds: currentBalance }).eq(\"id\", session.userId);
+    }
                 }, 1000);
             }
         } catch (err) {
