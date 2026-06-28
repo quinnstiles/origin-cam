@@ -1,8 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { WebSocketServer } from "ws"; // 👈 Add this line
-import { supabase } from "./lib/supabase.js"; // 👈 Add this line for WebSocket fallback commits
+import { WebSocketServer } from "ws";
+import { supabase } from "./lib/supabase.js";
 
 // ========================================
 // LOAD ENV
@@ -103,13 +103,13 @@ wss.on("connection", (ws, req) => {
     const sessionId = urlParams.searchParams.get("sessionId");
 
     if (!sessionId) {
-        ws.send(JSON.stringify({ command: "TERMINATE_IMMEDIATE", error: "Missing session allocation handle." }));
+        ws.send(JSON.stringify({ type: "error", message: "Missing session allocation handle." }));
         return ws.close();
     }
 
     const session = getSession(sessionId);
     if (!session) {
-        ws.send(JSON.stringify({ command: "TERMINATE_IMMEDIATE", error: "Target session profile record not found." }));
+        ws.send(JSON.stringify({ type: "error", message: "Target session profile record not found." }));
         return ws.close();
     }
 
@@ -124,7 +124,7 @@ wss.on("connection", (ws, req) => {
     const graceTimeout = setTimeout(() => {
         if (!isStreamActive) {
             console.log(`🚨 [WATCHDOG] Session ${sessionId} failed frame submission within 12s. Dropping link.`);
-            ws.send(JSON.stringify({ command: "TERMINATE_IMMEDIATE", error: "Connection failed: No frames received." }));
+            ws.send(JSON.stringify({ type: "error", message: "Connection failed: No frames received." }));
             ws.close();
         }
     }, 12000);
@@ -140,8 +140,8 @@ wss.on("connection", (ws, req) => {
                 session.isLive = true;
                 console.log(`🏁 [ENGINE] WebRTC frames detected for ${sessionId}. Cloud billing countdown started.`);
 
-                // Inside your app.js WebSocket Server Connection Loop:
-                countdownInterval = setInterval(async () => {
+                // 🕒 3. AUTHORITATIVE MASTER COUNTDOWN LOOP
+                countdownInterval = setInterval(() => {
                     if (currentBalance <= 0) {
                         clearInterval(countdownInterval);
                         ws.close();
@@ -151,22 +151,17 @@ wss.on("connection", (ws, req) => {
                     currentBalance--;
                     session.dbSeconds = currentBalance;
 
-                    // 🌟 FIX: Structure payload specifically to align with C++ ixwebsocket key expectations
+                    // Push payloads explicitly matching C++ ixwebsocket JSON parsing keys
                     if (ws.readyState === 1) { // OPEN
                         ws.send(JSON.stringify({
                             type: "countdown",
                             seconds: currentBalance
                         }));
                     }
-
-                    // Database balance batch syncs executed safely every 5 ticks
-                    if (currentBalance % 5 === 0) {
-                        await supabase.from("users").update({ remaining_seconds: currentBalance }).eq(\"id\", session.userId);
-    }
                 }, 1000);
             }
         } catch (err) {
-            console.log("Malformed frame sync frame dropped:", err.message);
+            console.log("Malformed frame payload structure dropped:", err.message);
         }
     });
 
@@ -178,14 +173,22 @@ wss.on("connection", (ws, req) => {
         activeControlSessions.delete(sessionId);
         deleteSession(sessionId);
 
-        // Authoritatively commit final structural balance calculations to the production database table layout
-        await supabase.from("users")
-            .update({
-                remaining_seconds: currentBalance,
-                active_session_id: null
-            })
-            .eq("id", session.userId);
+        // 🌟 SERVER-SIDE GRACE OFFSET: Add a 1-second cushion to absorb network/processing transit 
+        // latencies, making sure it commits exactly what the desktop UI displayed when freezing.
+        const GRACE_TIME_CUSHION = 1;
+        const finalBalanceToCommit = Math.max(0, currentBalance + GRACE_TIME_CUSHION);
 
-        console.log(`🔌 [CLEANUP] Channel broken for session ${sessionId}. Account updated safely with balance: ${currentBalance}s`);
+        console.log(`🔌 [CLEANUP] Channel broken for session ${sessionId}. Adjusting with grace window. Committing: ${finalBalanceToCommit}s`);
+
+        try {
+            await supabase.from("users")
+                .update({
+                    remaining_seconds: finalBalanceToCommit,
+                    active_session_id: null
+                })
+                .eq("id", session.userId);
+        } catch (dbErr) {
+            console.error("❌ Database transaction failed during connection severance:", dbErr.message);
+        }
     });
 });
