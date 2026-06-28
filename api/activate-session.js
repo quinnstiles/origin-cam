@@ -12,19 +12,14 @@ router.post("/", async (req, res) => {
         }
 
         const session = getSession(sessionId);
-
-        // 1. 🛡️ ZERO-TRUST MEMORY CHECK
-        // If the app.js watchdog timer already expired and penalized the account balance,
-        // or if server memory cleared, block the delayed activation instantly.
         if (!session) {
             return res.json({
                 success: false,
-                message: "Session not found, expired, or balance tracking has been written down to 0."
+                message: "Session not found or expired tracking parameters."
             });
         }
 
-        // 2. 🔍 CROSS-MACHINE SECURITY VERIFICATION
-        // Query the database schema directly to ensure this specific machine/session still owns the active slot.
+        // 🔍 CROSS-MACHINE SECURITY VERIFICATION
         const { data: profile, error: dbError } = await supabase
             .from("users")
             .select("active_session_id")
@@ -39,30 +34,8 @@ router.post("/", async (req, res) => {
             });
         }
 
-        const now = Date.now();
-
-        // 3. ENGAGE BILLING CLOCK FROM THIS EXACT MILLISECOND
-        if (!session.isLive) {
-            session.isLive = true;
-            session.createdAt = now; // The local live billing countdown starts right now
-
-            // 4. ATOMIC STATE UPDATE IN SUPABASE
-            const { error: updateError } = await supabase
-                .from("users")
-                .update({ session_is_live: true })
-                .eq("id", session.userId);
-
-            if (updateError) {
-                throw new Error(`Failed to update live streaming state flags in Supabase: ${updateError.message}`);
-            }
-
-            console.log(`🎥 Stream confirmed live. Billing engine and DB state engaged for: ${sessionId}`);
-        }
-
-        // Keep tracking pulse timestamps updated for the interval loop
-        session.lastStreamPulse = now;
-
-        return res.json({ success: true, message: "Session activated successfully." });
+        console.log(`🎥 Stream initialization sequence verified for: ${sessionId}. Client must connect to the control pipe socket.`);
+        return res.json({ success: true, message: "Session verified for engine pipe link initialization mapping." });
 
     } catch (err) {
         console.log("❌ ACTIVATE SESSION ERROR:", err.message);

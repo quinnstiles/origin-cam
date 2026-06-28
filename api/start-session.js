@@ -95,12 +95,11 @@ router.post("/", async (req, res) => {
         const decartJson = await decartRes.json();
         const now = Date.now();
 
-        // 5. ATOMIC STATE SYNC TO SUPABASE
+        // 5. ATOMIC ACTIVE STATE TRACKING UPDATES (Removed session_is_live)
         const { error: stateUpdateError } = await supabase
             .from("users")
             .update({
-                active_session_id: sessionId,
-                session_is_live: false
+                active_session_id: sessionId
             })
             .eq("id", userId);
 
