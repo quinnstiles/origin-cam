@@ -141,23 +141,23 @@ wss.on("connection", (ws, req) => {
                 console.log(`🏁 [ENGINE] WebRTC frames detected for ${sessionId}. Cloud billing countdown started.`);
 
                 // 🕒 3. AUTHORITATIVE MASTER COUNTDOWN LOOP
-                countdownInterval = setInterval(() => {
+                countdownInterval = setInterval(async () => {
                     if (currentBalance <= 0) {
                         clearInterval(countdownInterval);
+                        ws.send(JSON.stringify({ command: "TERMINATE_IMMEDIATE", error: "Wallet balance fully depleted." }));
                         ws.close();
                         return;
                     }
 
                     currentBalance--;
-                    session.dbSeconds = currentBalance;
+                    session.dbSeconds = currentBalance; // Keep local store memory object accurate
 
-                    // Push payloads explicitly matching C++ ixwebsocket JSON parsing keys
-                    if (ws.readyState === 1) { // OPEN
-                        ws.send(JSON.stringify({
-                            type: "countdown",
-                            seconds: currentBalance
-                        }));
-                    }
+                    // 🌟 FIX: Alter keys to match 'type' and 'seconds' expected by bridge_service.cpp
+                    ws.send(JSON.stringify({
+                        type: "countdown",
+                        seconds: currentBalance
+                    }));
+
                 }, 1000);
             }
         } catch (err) {
