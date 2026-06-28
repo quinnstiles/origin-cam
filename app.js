@@ -173,9 +173,9 @@ wss.on("connection", (ws, req) => {
         activeControlSessions.delete(sessionId);
         deleteSession(sessionId);
 
-        // 🌟 SERVER-SIDE GRACE OFFSET: Add a 1-second cushion to absorb network/processing transit 
-        // latencies, making sure it commits exactly what the desktop UI displayed when freezing.
-        const GRACE_TIME_CUSHION = 1;
+        // 🌟 SERVER-SIDE GRACE OFFSET: Increased to 4 seconds to seamlessly match the desktop UI 
+        // local decrements and prevent data clipping across network transit gaps.
+        const GRACE_TIME_CUSHION = 4;
         const finalBalanceToCommit = Math.max(0, currentBalance + GRACE_TIME_CUSHION);
 
         console.log(`🔌 [CLEANUP] Channel broken for session ${sessionId}. Adjusting with grace window. Committing: ${finalBalanceToCommit}s`);
