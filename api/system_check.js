@@ -3,18 +3,24 @@ import { supabase } from '../lib/supabase.js';
 
 const router = express.Router();
 
+// 🌟 NEW: Lightweight Keep-Alive & Wake-Up Endpoint
+// Bypasses database logic entirely to respond instantly once the container boots.
+router.get('/', (req, res) => {
+    return res.json({ status: "online", message: "Render instance is awake." });
+});
+
+// Existing POST validation rule pipeline...
 router.post('/', async (req, res) => {
     try {
         const { signature, version } = req.body;
 
         if (!signature || version === undefined) {
             return res.json({
-                supported: "false", // 🌟 WRAPPED IN QUOTES FOR C++ PARSER
+                supported: "false",
                 message: "Missing version validation parameters."
             });
         }
 
-        // Query the table using your exact column name containing the space
         const { data: record, error } = await supabase
             .from('system_version_control')
             .select('*')
@@ -30,25 +36,15 @@ router.post('/', async (req, res) => {
             });
         }
 
-        // Rule 1: Version signature entry doesn't exist
-        if (!record) {
+        if (!record || record.version_state === false) {
             return res.json({
-                supported: "false", // 🌟 WRAPPED IN QUOTES
+                supported: "false",
                 message: "This version is no longer supported."
             });
         }
 
-        // Rule 2: Version is explicitly disabled
-        if (record.version_state === false) {
-            return res.json({
-                supported: "false", // 🌟 WRAPPED IN QUOTES
-                message: "This version is no longer supported."
-            });
-        }
-
-        // Success Clearance Barrier Passed
         return res.json({
-            supported: "true", // 🌟 WRAPPED IN QUOTES: Matches ExtractString expectation perfectly
+            supported: "true",
             message: "Success"
         });
 
